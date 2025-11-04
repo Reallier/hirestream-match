@@ -33,34 +33,6 @@ def _read_pdf_bytes_to_text(data: bytes) -> str:
             text_parts.append(page_text)
     return "\n".join(text_parts).strip()
 
-# def _read_docx_bytes_to_text(data: bytes) -> str:
-#     # Use python-docx to avoid writing to disk
-#     try:
-#         from docx import Document  # type: ignore
-#     except Exception as e:
-#         raise RuntimeError("缺少依赖 python-docx，请先 pip install python-docx") from e
-#     file_like = io.BytesIO(data)
-#     doc = Document(file_like)
-#     lines: List[str] = []
-#     for p in doc.paragraphs:
-#         if p.text:
-#             lines.append(p.text)
-#     # Extract tables text if present
-#     for tbl in doc.tables:
-#         for row in tbl.rows:
-#             cells = [c.text.strip() for c in row.cells if c.text]
-#             if any(cells):
-#                 lines.append(" | ".join(cells))
-#     return "\n".join(lines).strip()
-
-# def _read_txt_bytes_to_text(data: bytes) -> str:
-#     # Attempt UTF-8, fallback to GBK/latin-1
-#     for enc in ("utf-8", "utf-16", "gb18030", "latin-1"):
-#         try:
-#             return data.decode(enc)
-#         except Exception:
-#             continue
-#     return data.decode("utf-8", errors="ignore")
 
 def extract_text_from_upload(filename: str, data: bytes) -> str:
     name = (filename or "").lower()
