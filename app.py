@@ -18,38 +18,58 @@ st.set_page_config(page_title="HireStream Match — 简历与JD智能匹配", pa
 st.caption("提示：粘贴JD + 上传简历后，会自动分析，无需点击按钮。")
 
 # --- Layout: three blocks ---
+# with st.container(border=True):
+#     jd_text = st.text_area("职位描述（JD）", height=220, placeholder="在此粘贴JD文本……", key="jd_text")
 with st.container(border=True):
-    jd_text = st.text_area("职位描述（JD）", height=220, placeholder="在此粘贴JD文本……", key="jd_text")
+    jd_text = st.text_area(
+        "职位描述（JD）",
+        height=220,
+        placeholder="在此粘贴JD文本……",
+        key="jd_text"
+    )
 
-with st.container(border=True):
-    up = st.file_uploader("上传候选人简历（PDF / DOCX / TXT，≤ 2MB）", type=["pdf", "docx", "txt"], accept_multiple_files=False, key="resume_file")
-    resume_text = ""
-    if up is not None:
-        # Size guard
+    # 若内容非空且刚刚变化，则自动处理
+    if jd_text and st.session_state.get("jd_last") != jd_text:
+        st.session_state["jd_last"] = jd_text
+        st.success("JD 已自动更新！")  # 这里写你的处理逻辑，比如解析、分析等
+
+
+with st.container(border=True):  # 创建一个带边框的容器，以下组件都显示在这个容器中
+    up = st.file_uploader(  # 文件上传组件
+        "上传候选人简历（PDF ≤ 2MB）",  # 上传提示文字
+        type=["pdf"],  # 只允许上传 PDF 文件
+        accept_multiple_files=False,  # 仅允许单文件上传
+        key="resume_file"  # 组件唯一键值，避免状态冲突
+    )
+    resume_text = ""  # 初始化简历文本变量，默认空字符串
+    if up is not None:  # 判断是否有文件被上传
         if up.size > 2 * 1024 * 1024:
             st.error("文件过大：需 ≤ 2MB。")
             up = None
         else:
-            try:
-                resume_text = extract_text_from_upload(up.name, up.read())
-                st.success(f"文件已上传：{up.name}")
-            except Exception as e:
-                st.error(f"解析失败：{e}")
+            # 调用自定义函数提取上传文件的文本内容
+            # up.read() 读取文件的全部二进制数据
+            resume_text = extract_text_from_upload(up.name, up.read())
+            # 显示上传成功信息，并提示文件名
+            st.success(f"文件已上传：{up.name}")
+
 
 # --- Auto trigger ---
-placeholder = st.container(border=True)
-with placeholder:
+placeholder = st.container(border=True)  # 创建一个带边框的容器，用于显示匹配结果部分
+with placeholder:  # 在该容器中绘制内容
     st.markdown("### 匹配结果")
-    # Only analyze when both ready & non-empty
+    # 仅当职位描述和简历文本都存在且非空时才执行分析逻辑
     if jd_text and resume_text:
-        # Debounce by hashing inputs
+        # 计算两段文本的哈希值，用于判断内容是否变化（防抖）
         key = hash_inputs(jd_text, resume_text)
-        if st.session_state.get("last_key") != key:
-            st.session_state["last_key"] = key
-            st.session_state["result"] = None
-            with st.spinner("正在分析匹配度…"):
+        if st.session_state.get("last_key") != key:  # 如果当前哈希与上次不同，说明输入内容发生了变化
+            st.session_state["last_key"] = key  # 更新 session_state 中记录的哈希值
+            st.session_state["result"] = None  # 清空旧的分析结果
+            with st.spinner("正在分析匹配度…"):  # 显示加载动画提示用户模型正在运行
                 try:
+                    # 构造用户提示词（将JD和简历内容填入模板）
                     user_prompt = USER_TEMPLATE.format(job_description=jd_text.strip(), resume_content=resume_text.strip())
+                    # 调用千问模型API进行匹配度分析
                     result = call_qwen_json(
                         system_prompt=SYSTEM_PROMPT,
                         user_prompt=user_prompt,
@@ -63,37 +83,15 @@ with placeholder:
                     st.stop()
 
         # Render report if available
-        result = st.session_state.get("result")
-        if result:
+        result = st.session_state.get("result")  # 从 session_state 读取当前分析结果
+        if result:  # 如果结果存在，执行展示逻辑
             # Visual score meter
-            score = int(result.get("match_score", 0))
-            st.progress(score/100.0, text=f"匹配度 {score}%")
-            st.markdown(render_markdown_report(result), unsafe_allow_html=False)
+            score = int(result.get("match_score", 0))  # 获取匹配得分（默认0）
+            st.progress(score/100.0, text=f"匹配度 {score}%")  # 绘制进度条形式的匹配度指示器
+            st.markdown(render_markdown_report(result), unsafe_allow_html=False)  # 渲染报告的 Markdown 内容
 
-# Footer
-# st.divider()
+
 st.caption("© 2025 HireStream Match · Powered by Qwen-3 Max")
-# Hide Streamlit default footer/menu for cleanliness
-# st.markdown("""
-# <style>
-# #MainMenu {visibility: hidden;}
-# footer {visibility: hidden;}
-# .block-container {padding-top: 2.0rem;}
-# </style>
-# """, unsafe_allow_html=True)
-
-# st.markdown("""
-# <style>
-# /* 去掉粘性顶栏本体与占位 */
-# header[data-testid="stHeader"]{display:none;}
-# /* 收紧主容器上边距 */
-# .main .block-container{padding-top:0.4rem;}
-# /* 首个 H1 顶部外边距压缩，避免再留空 */
-# h1:first-child{margin-top:0.2rem;}
-# /* 可选：隐藏菜单/页脚，同时不占位 */
-# #MainMenu, footer{display:none;}
-# </style>
-# """, unsafe_allow_html=True)
 
 st.markdown("""
 <style>
