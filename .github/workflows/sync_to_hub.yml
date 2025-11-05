@@ -19,4 +19,4 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           echo "::add-mask::$HF_TOKEN"
-          git push "https://Reallier:$HF_TOKEN@huggingface.co/spaces/Reallier/private-test" HEAD:main
+          git push --force "https://Reallier:$HF_TOKEN@huggingface.co/spaces/Reallier/private-test" HEAD:main
