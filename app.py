@@ -33,24 +33,33 @@ with st.container(border=True):
         st.toast("✅ JD 已自动更新！")  # 右上角弹出提示框（自动消失）
 
 
-with st.container(border=True):  # 创建一个带边框的容器，以下组件都显示在这个容器中
-    up = st.file_uploader(  # 文件上传组件
-        "上传候选人简历（PDF ≤ 2MB）",  # 上传提示文字
-        type=["pdf"],  # 只允许上传 PDF 文件
-        accept_multiple_files=False,  # 仅允许单文件上传
-        key="resume_file"  # 组件唯一键值，避免状态冲突
+with st.container(border=True):
+    up = st.file_uploader(
+        "上传候选人简历（PDF ≤ 2MB）",
+        type=["pdf"],
+        accept_multiple_files=False,
+        key="resume_file"
     )
-    resume_text = ""  # 初始化简历文本变量，默认空字符串
-    if up is not None:  # 判断是否有文件被上传
-        if up.size > 2 * 1024 * 1024:
-            st.error("文件过大：需 ≤ 2MB。")
-            up = None
-        else:
-            # 调用自定义函数提取上传文件的文本内容
-            # up.read() 读取文件的全部二进制数据
-            resume_text = extract_text_from_upload(up.name, up.read())
-            # 显示上传成功信息，并提示文件名
-            st.success(f"文件已上传：{up.name}")
+
+    resume_text = ""
+
+    if up is not None:
+        with st.status("准备开始处理…", expanded=True) as status:
+            st.write("① 检查文件大小…")
+            if up.size > 2 * 1024 * 1024:
+                status.update(label="文件过大", state="error")
+                st.error("文件过大：需 ≤ 2MB。")
+            else:
+                st.write("② 读取文件并执行 OCR…")
+                try:
+                    resume_text = extract_text_from_upload(up.name, up.read())
+                except Exception as e:
+                    status.update(label="解析失败", state="error")
+                    st.error(f"解析失败：{e}")
+                else:
+                    status.update(label="完成 ✅", state="complete")
+                    st.success(f"文件已上传并解析完成：{up.name}")
+                    st.text(resume_text[:500] + ("…" if len(resume_text) > 500 else ""))
 
 
 # --- Auto trigger ---
