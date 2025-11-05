@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import os
-import sys
 import streamlit as st
 
 from prompts import SYSTEM_PROMPT, USER_TEMPLATE
@@ -31,7 +30,7 @@ with st.container(border=True):
     # 若内容非空且刚刚变化，则自动处理
     if jd_text and st.session_state.get("jd_last") != jd_text:
         st.session_state["jd_last"] = jd_text
-        st.success("JD 已自动更新！")  # 这里写你的处理逻辑，比如解析、分析等
+        st.toast("✅ JD 已自动更新！")  # 右上角弹出提示框（自动消失）
 
 
 with st.container(border=True):  # 创建一个带边框的容器，以下组件都显示在这个容器中
