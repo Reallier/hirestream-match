@@ -1,0 +1,22 @@
+name: Sync to Hugging Face hub
+
+on:
+  push:
+    branches: [main]      # 当 main 分支有新提交就自动触发
+  workflow_dispatch:      # 也支持在 Actions 页面手动触发
+
+jobs:
+  sync-to-hub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 必须拿到完整历史，避免浅克隆导致 push 失败
+          lfs: true        # 支持 Git-LFS（>10MB 的文件需要）
+
+      - name: Push to hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}  # 从仓库 Secrets 里读取
+        run: |
+          # 将 main 分支推送到你的 Space
+          git push https://Reallier:$HF_TOKEN@huggingface.co/spaces/Reallier/private-test main
