@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
 import os
 import streamlit as st
+from dotenv import load_dotenv
 
-from prompts import SYSTEM_PROMPT, USER_TEMPLATE
+# from prompts import SYSTEM_PROMPT, USER_TEMPLATE
+load_dotenv()
+SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT")
+USER_TEMPLATE = os.getenv("USER_TEMPLATE")
+
+
 from match_engine import (
     extract_text_from_upload, call_qwen_json, render_markdown_report, hash_inputs
 )

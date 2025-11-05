@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Qwen PDF OCR 封装类
+Qwen PDF OCR 封装类（支持 pdf_path 或 pdf_bytes）
 依赖：pip install pymupdf pillow dashscope
 """
 
@@ -17,8 +17,9 @@ class QwenPDFOCR:
 
     def __init__(
         self,
-        pdf_path: str,
-        api_key: str,
+        pdf_path: str | None = None,
+        pdf_bytes: bytes | None = None,
+        api_key: str = "",
         model: str = "qwen-vl-ocr",
         region: str = "cn",   # "cn" 国内；"intl" 国际
         dpi: int = 400,
@@ -27,7 +28,8 @@ class QwenPDFOCR:
         verbose: bool = True,
     ):
         """
-        :param pdf_path: 待 OCR 的 PDF 路径
+        :param pdf_path: PDF 文件路径（二选一）
+        :param pdf_bytes: PDF 的原始字节内容（二选一）
         :param api_key: DashScope API Key
         :param model:   模型名称，默认 qwen-vl-ocr
         :param region:  "cn" 或 "intl"
@@ -36,7 +38,11 @@ class QwenPDFOCR:
         :param timeout:(connect_timeout, read_timeout)
         :param verbose:打印详细日志
         """
+        if not pdf_path and not pdf_bytes:
+            raise ValueError("必须提供 pdf_path 或 pdf_bytes 其中之一。")
         self.pdf_path = pdf_path
+        self.pdf_bytes = pdf_bytes
+
         self.api_key = api_key
         self.model = model
         self.region = region
@@ -49,6 +55,30 @@ class QwenPDFOCR:
         for k in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "REQUESTS_CA_BUNDLE"):
             os.environ.pop(k, None)
         self._set_base_url(self.region)
+
+    # ------------------ 便捷构造 ------------------
+    @staticmethod
+    def from_bytes(
+        data: bytes,
+        api_key: str,
+        model: str = "qwen-vl-ocr",
+        region: str = "cn",
+        dpi: int = 400,
+        ocr_hint: str | None = None,
+        timeout: tuple[int, int] = (8, 120),
+        verbose: bool = True,
+    ) -> "QwenPDFOCR":
+        return QwenPDFOCR(
+            pdf_path=None,
+            pdf_bytes=data,
+            api_key=api_key,
+            model=model,
+            region=region,
+            dpi=dpi,
+            ocr_hint=ocr_hint,
+            timeout=timeout,
+            verbose=verbose,
+        )
 
     # ------------------ 工具方法 ------------------
 
@@ -183,7 +213,14 @@ class QwenPDFOCR:
     def run(self) -> str:
         """执行 PDF 全量 OCR，返回按页拼接的文本。"""
         lines = []
-        with fitz.open(self.pdf_path) as doc:
+
+        # 直接从 bytes 或路径打开 PDF（避免无谓的临时落盘）
+        if self.pdf_bytes:
+            doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
+        else:
+            doc = fitz.open(self.pdf_path)
+
+        with doc:
             zoom = self.dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
             for i, page in enumerate(doc):
@@ -196,25 +233,5 @@ class QwenPDFOCR:
                 if not text:
                     text = "[OCR 失败: 未返回文本]"
                 lines.append(f"===[PAGE {i+1}]===\n{text}\n")
+
         return "\n".join(lines)
-
-
-# ------------------ 直接运行示例 ------------------
-if __name__ == "__main__":
-    PDF_PATH = "曲若华.pdf"
-    DASHSCOPE_API_KEY = "sk-5e5ae12f981a4b1fab7f40137b9f27cb"   # 填你的 Key
-    MODEL = "qwen-vl-ocr"
-    REGION = "cn"            # 或 "intl"
-
-    ocr = QwenPDFOCR(
-        pdf_path=PDF_PATH,
-        api_key=DASHSCOPE_API_KEY,
-        model=MODEL,
-        region=REGION,
-        dpi=400,
-        verbose=True,
-    )
-    result = ocr.run()
-    print("\n========== 最终输出 ==========\n")
-    print(result)
-
