@@ -15,6 +15,7 @@ import re
 import time
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
+from dotenv import load_dotenv
 
 # --- 轻量级、纯内存文件解析 ---
 def _read_pdf_bytes_to_text(data: bytes) -> str:
@@ -38,11 +39,7 @@ def extract_text_from_upload(filename: str, data: bytes) -> str:
     name = (filename or "").lower()
     if name.endswith(".pdf"):
         return _read_pdf_bytes_to_text(data)
-    # if name.endswith(".docx"):
-    #     return _read_docx_bytes_to_text(data)
-    # if name.endswith(".txt"):
-    #     return _read_txt_bytes_to_text(data)
-    raise ValueError("不支持的文件类型，仅支持 PDF / DOCX / TXT")
+    raise ValueError("不支持的文件类型，仅支持 PDF")
 
 # --- LLM 调用（通过 DashScope 或兼容 OpenAI 的 DashScope 接口） ---
 def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeout: int) -> str:
@@ -53,15 +50,14 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
       - 环境变量中存在 OPENAI_API_KEY 或 DASHSCOPE_API_KEY（两者任选其一）
       - 可选环境变量 OPENAI_BASE_URL（未设置则默认使用 DashScope 中国区兼容端点）
     """
-    try:
-        from openai import OpenAI  # type: ignore
-    except Exception as e:
-        raise RuntimeError("缺少依赖 openai>=1.x，请先 pip install openai") from e
 
-    # api_key = os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-    # if not api_key:
-    #     raise RuntimeError("未检测到 OPENAI_API_KEY 或 DASHSCOPE_API_KEY 环境变量。")
-    api_key = "sk-5e5ae12f981a4b1fab7f40137b9f27cb"
+    from openai import OpenAI  # type: ignore
+
+
+    load_dotenv()  # 必须在读取环境变量之前调用
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
+    if not api_key:
+        raise RuntimeError("未检测到 OPENAI_API_KEY 或 DASHSCOPE_API_KEY 环境变量。")
 
     base_url = os.getenv("OPENAI_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
     client = OpenAI(api_key=api_key, base_url=base_url)
@@ -100,11 +96,8 @@ def _call_dashscope_sdk(messages: List[Dict[str, str]], model: str, timeout: int
         旧版可能只接受单字符串 "prompt"。
       - 因此代码会先尝试使用 "messages" 调用，如失败则回退到 "prompt" 方式。
     """
-    try:
-        import dashscope  # type: ignore
-        from dashscope import Generation  # type: ignore
-    except Exception as e:
-        raise RuntimeError("缺少依赖 dashscope，请先 pip install dashscope") from e
+    import dashscope  # type: ignore
+    from dashscope import Generation  # type: ignore
 
     # API key
     api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
