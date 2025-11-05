@@ -1,3 +1,14 @@
+---
+title: HireStream Match — 简历与 JD 智能匹配助手
+emoji: 🧠
+colorFrom: blue
+colorTo: indigo
+sdk: streamlit
+app_file: app.py
+pinned: false
+---
+
+
 # HireStream Match — 简历与 JD 智能匹配助手
 
 > 一页式 · 零学习成本 · 清晰匹配报告
