@@ -8,7 +8,6 @@ HireStream Match 核心逻辑：
 """
 from __future__ import annotations # 延迟解析类型注解为字符串，避免循环引用/前置声明问题，并减少运行期开销。
 
-import io
 import json
 import os
 import re
@@ -16,23 +15,28 @@ import time
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
 from dotenv import load_dotenv
+from qwen_pdf_ocr import QwenPDFOCR
 
 # --- 轻量级、纯内存文件解析 ---
+# def _read_pdf_bytes_to_text(data: bytes) -> str:
+#     """
+#     延迟导入只牺牲首调用的极小成本，换来更快启动、更少依赖耦合。
+#     若该函数是热点且对 p99 延迟敏感，再改为顶部导入或在启动阶段预热即可。
+#     """
+#     import pdfplumber  # type: ignore
+#     text_parts: List[str] = []
+#     with pdfplumber.open(io.BytesIO(data)) as pdf:
+#         for page in pdf.pages:
+#             page_text = page.extract_text() or ""
+#             text_parts.append(page_text)
+#     return "\n".join(text_parts).strip()
 def _read_pdf_bytes_to_text(data: bytes) -> str:
-    """
-    延迟导入只牺牲首调用的极小成本，换来更快启动、更少依赖耦合。
-    若该函数是热点且对 p99 延迟敏感，再改为顶部导入或在启动阶段预热即可。
-    """
-    try:
-        import pdfplumber  # type: ignore
-    except Exception as e:
-        raise RuntimeError("缺少依赖 pdfplumber，请先 pip install pdfplumber") from e
-    text_parts: List[str] = []
-    with pdfplumber.open(io.BytesIO(data)) as pdf:
-        for page in pdf.pages:
-            page_text = page.extract_text() or ""
-            text_parts.append(page_text)
-    return "\n".join(text_parts).strip()
+    import os
+    load_dotenv()
+    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("未配置 DASHSCOPE_API_KEY 环境变量。")
+    return QwenPDFOCR.from_bytes(data, api_key=api_key, region="cn", verbose=False).run().strip()
 
 
 def extract_text_from_upload(filename: str, data: bytes) -> str:
