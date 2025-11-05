@@ -14,7 +14,7 @@ import re
 import time
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 from qwen_pdf_ocr import QwenPDFOCR
 
 # --- 轻量级、纯内存文件解析 ---
@@ -32,7 +32,7 @@ from qwen_pdf_ocr import QwenPDFOCR
 #     return "\n".join(text_parts).strip()
 def _read_pdf_bytes_to_text(data: bytes) -> str:
     import os
-    load_dotenv()
+    # load_dotenv()
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("未配置 DASHSCOPE_API_KEY 环境变量。")
@@ -58,7 +58,7 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
     from openai import OpenAI  # type: ignore
 
 
-    load_dotenv()  # 必须在读取环境变量之前调用
+    # load_dotenv()  # 必须在读取环境变量之前调用
     api_key = os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
         raise RuntimeError("未检测到 OPENAI_API_KEY 或 DASHSCOPE_API_KEY 环境变量。")
