@@ -5,6 +5,7 @@ colorFrom: blue
 colorTo: indigo
 sdk: streamlit
 app_file: app.py
+python_version: "3.13"   # ✅ 关键行：指定 Python 版本
 pinned: false
 ---
 
