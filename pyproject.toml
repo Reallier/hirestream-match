@@ -5,7 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13.7,<3.14"
 dependencies = [
+    "dashscope>=1.24.9",
     "openai>=2.7.1",
+    "paddleocr>=3.3.1",
     "pdfplumber>=0.11.7",
+    "pymupdf>=1.26.5",
+    "pytesseract>=0.3.13",
+    "python-dotenv>=1.2.1",
     "streamlit>=1.51.0",
 ]
