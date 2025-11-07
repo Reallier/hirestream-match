@@ -52,20 +52,28 @@ class QwenPDFOCR:
         self.timeout = timeout
         self.verbose = verbose
 
-        # --- 2. Loguru 配置 (替换所有 logging 样板代码) ---
-        # 根据 verbose 设置日志级别
-        log_level = "INFO" if self.verbose else "WARNING"
+        # --- Loguru 配置修改 ---
+        log_level = "INFO" if verbose else "WARNING"
 
-        # 添加一个新的、格式化的 handler 到控制台
-        # {thread.name} 对并发调试非常重要
-        # enqueue=True 确保在多进程/多线程环境下的日志安全
+        # 1. 保留你原来的控制台 handler (虽然它可能被 Streamlit 吞掉)
         logger.add(
             sys.stderr,
             level=log_level,
             format="{time:HH:mm:ss.SSS} | {level:<8} | {thread.name:<15} | {name}:{function} - {message}",
-            colorize=True,  # 启动彩色日志
-            enqueue=True  # 线程/进程安全
+            colorize=True,
+            enqueue=True
         )
+
+        # 2. 【关键】添加一个文件 handler 作为“黑匣子”
+        # 无论 Streamlit 怎么做，日志都会被可靠地写入这个文件
+        logger.add(
+            "ocr_debug.log",  # <-- 日志文件名
+            level="DEBUG",  # <-- 记录所有级别的日志到文件
+            rotation="10 MB",  # <-- 10MB后自动分割
+            enqueue=True,  # <-- 线程/进程安全
+            format="{time} | {level:<8} | {thread.name:<15} | {name}:{function}:{line} - {message}"  # 文件中记录更详细的格式
+        )
+        # --- 配置完毕 ---
 
         # 清理代理，设置地区 base_url
         for k in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "REQUESTS_CA_BUNDLE"):
