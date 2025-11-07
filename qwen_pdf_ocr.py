@@ -4,10 +4,13 @@ Qwen PDF OCR 封装类（支持 pdf_path 或 pdf_bytes）
 依赖：pip install pymupdf pillow dashscope
 """
 
-import os, io, base64, json, traceback, tempfile
+import os, io, base64, json, traceback, tempfile, sys
 import fitz
 from PIL import Image
+from loguru import logger
 
+# 移除 loguru 的默认 handler，以便我们自定义
+logger.remove()
 
 class QwenPDFOCR:
     DEFAULT_HINT = (
@@ -38,8 +41,6 @@ class QwenPDFOCR:
         :param timeout:(connect_timeout, read_timeout)
         :param verbose:打印详细日志
         """
-        if not pdf_path and not pdf_bytes:
-            raise ValueError("必须提供 pdf_path 或 pdf_bytes 其中之一。")
         self.pdf_path = pdf_path
         self.pdf_bytes = pdf_bytes
 
@@ -50,6 +51,21 @@ class QwenPDFOCR:
         self.ocr_hint = ocr_hint or self.DEFAULT_HINT
         self.timeout = timeout
         self.verbose = verbose
+
+        # --- 2. Loguru 配置 (替换所有 logging 样板代码) ---
+        # 根据 verbose 设置日志级别
+        log_level = "INFO" if self.verbose else "WARNING"
+
+        # 添加一个新的、格式化的 handler 到控制台
+        # {thread.name} 对并发调试非常重要
+        # enqueue=True 确保在多进程/多线程环境下的日志安全
+        logger.add(
+            sys.stderr,
+            level=log_level,
+            format="{time:HH:mm:ss.SSS} | {level:<8} | {thread.name:<15} | {name}:{function} - {message}",
+            colorize=True,  # 启动彩色日志
+            enqueue=True  # 线程/进程安全
+        )
 
         # 清理代理，设置地区 base_url
         for k in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "REQUESTS_CA_BUNDLE"):
@@ -112,8 +128,9 @@ class QwenPDFOCR:
         )
 
     def _log(self, *args):
-        if self.verbose:
-            print(*args)
+        # 【修改】直接调用全局的 loguru logger
+        message = " ".join(map(str, args))
+        logger.info(message)
 
     # ------------------ 响应解析 ------------------
 
@@ -123,9 +140,11 @@ class QwenPDFOCR:
             v = getattr(resp, k, None)
             if v is not None:
                 self._log(f"    {k} =", v)
+                logger.info(f"    {k} = {v}")
 
         out = getattr(resp, "output", {}) or {}
         self._log(">>> resp.output keys:", list(out.keys()) if isinstance(out, dict) else type(out))
+        logger.info(f">>> resp.output keys: {list(out.keys()) if isinstance(out, dict) else type(out)}")
 
         choices = out.get("choices") or out.get("outputs") or []
         if choices:
@@ -210,28 +229,118 @@ class QwenPDFOCR:
 
     # ------------------ 对外主流程 ------------------
 
-    def run(self) -> str:
-        """执行 PDF 全量 OCR，返回按页拼接的文本。"""
-        lines = []
+    # def run(self) -> str:
+    #     """执行 PDF 全量 OCR，返回按页拼接的文本。"""
+    #     lines = []
+    #
+    #     # 直接从 bytes 或路径打开 PDF（避免无谓的临时落盘）
+    #     if self.pdf_bytes:
+    #         doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
+    #     else:
+    #         doc = fitz.open(self.pdf_path)
+    #
+    #     with doc:
+    #         zoom = self.dpi / 72.0
+    #         mat = fitz.Matrix(zoom, zoom)
+    #         for i, page in enumerate(doc):
+    #             self._log(f"\n====== 处理第 {i+1} 页 ======")
+    #             pix = page.get_pixmap(matrix=mat, alpha=False)
+    #             pil_img = self._pix_to_pil(pix)
+    #             img_bytes = self._pil_to_jpeg_bytes(pil_img, quality=85)
+    #             self._log(">>> 图像大小:", len(img_bytes), "bytes")
+    #             text = self._ocr_one_image(img_bytes)
+    #             if not text:
+    #                 text = "[OCR 失败: 未返回文本]"
+    #             lines.append(f"===[PAGE {i+1}]===\n{text}\n")
+    #
+    #     return "\n".join(lines)
 
-        # 直接从 bytes 或路径打开 PDF（避免无谓的临时落盘）
-        if self.pdf_bytes:
-            doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
-        else:
-            doc = fitz.open(self.pdf_path)
+
+    # ------------------ 对外主流程 ------------------
+
+    def run(self, max_workers: int = 10) -> str:
+        """
+        【优化版】执行 PDF 全量 OCR，并发处理页面以提高速度。
+        :param max_workers: 并发线程数，根据 API 的 QPS/QPM 限制调整
+        """
+        lines = []
+        page_image_bytes_list = []  # 存储所有待处理的页面图像
+
+        # --- 阶段1：串行准备所有图像（CPU密集型，保持在主线程）---
+        self._log(f"开始准备 PDF 图像（串行），共 {self.pdf_path or 'bytes data'}...")
+        try:
+            if self.pdf_bytes:
+                doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
+            else:
+                doc = fitz.open(self.pdf_path)
+        except Exception as e:
+            self._log(f"❌ 打开 PDF 失败: {e}")
+            return f"[错误: 无法打开 PDF 文件 {e}]"
 
         with doc:
             zoom = self.dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
             for i, page in enumerate(doc):
-                self._log(f"\n====== 处理第 {i+1} 页 ======")
+                self._log(f"    正在渲染第 {i + 1} 页...")
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 pil_img = self._pix_to_pil(pix)
                 img_bytes = self._pil_to_jpeg_bytes(pil_img, quality=85)
-                self._log(">>> 图像大小:", len(img_bytes), "bytes")
-                text = self._ocr_one_image(img_bytes)
-                if not text:
-                    text = "[OCR 失败: 未返回文本]"
-                lines.append(f"===[PAGE {i+1}]===\n{text}\n")
+                # 存储待处理的数据
+                page_image_bytes_list.append((i + 1, img_bytes))
+
+        self._log(f"✅ 所有页面图像准备完毕，共 {len(page_image_bytes_list)} 页。")
+
+        # --- 阶段2：并发执行 OCR（I/O密集型）---
+        # 我们需要一个辅助函数来解包元组并调用 _ocr_one_image
+        # 这样日志才能正确打印页码
+        def ocr_task(page_data: tuple[int, bytes]) -> tuple[int, str]:
+            page_num, img_bytes = page_data
+            self._log(f"\n====== [并发] 开始处理第 {page_num} 页 ======")
+            self._log(f">>> 图像大小:", len(img_bytes), "bytes", f"(Page {page_num})")
+
+            # _ocr_one_image 内部的 self._log 也会被调用
+            # 注意：来自不同线程的 verbose 日志会交错出现，这是正常的
+            text = self._ocr_one_image(img_bytes)
+
+            if not text:
+                text = "[OCR 失败: 未返回文本]"
+            self._log(f"====== [并发] 第 {page_num} 页处理完毕 ======")
+            return (page_num, text)
+
+        # 按顺序存储最终结果
+        page_results = [None] * len(page_image_bytes_list)
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        # 使用 ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            self._log(f"🚀 启动线程池 (max_workers={max_workers})，开始并发 OCR...")
+
+            # 提交所有任务
+            # 我们使用 submit 而不是 map，以便在日志中更好地跟踪
+            future_to_page = {
+                executor.submit(ocr_task, page_data): page_data[0]
+                for page_data in page_image_bytes_list
+            }
+
+            processed_count = 0
+            for future in as_completed(future_to_page):
+                page_num = future_to_page[future]
+                try:
+                    page_num_result, text_result = future.result()
+                    page_results[page_num_result - 1] = text_result  # 放到正确的位置
+                    processed_count += 1
+                    self._log(
+                        f"    (进度: {processed_count}/{len(page_image_bytes_list)}) 第 {page_num} 页结果已获取。")
+                except Exception as exc:
+                    self._log(f"❌ 第 {page_num} 页在并发处理时发生严重错误: {exc}")
+                    traceback.print_exc()
+                    page_results[page_num - 1] = f"[OCR 失败: 发生异常 {exc}]"
+
+        self._log("✅ 所有并发任务完成。")
+
+        # --- 阶段3：汇总结果 ---
+        for i, text in enumerate(page_results):
+            lines.append(f"===[PAGE {i + 1}]===\n{text}\n")
 
         return "\n".join(lines)
