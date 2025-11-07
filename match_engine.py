@@ -22,7 +22,6 @@ def _read_pdf_bytes_to_text(data: bytes) -> str:
         raise RuntimeError("未配置 DASHSCOPE_API_KEY 环境变量。")
     return QwenPDFOCR.from_bytes(data, api_key=api_key, region="cn", verbose=False).run().strip()
 
-
 def extract_text_from_upload(filename: str, data: bytes) -> str:
     name = (filename or "").lower()
     if name.endswith(".pdf"):
@@ -208,25 +207,3 @@ def _ensure_list_of_str(x: Any) -> List[str]:
         return [p.strip() for p in parts if p.strip()]
     return []
 
-# --- Report rendering ---
-def render_markdown_report(result: Dict[str, Any]) -> str:
-    score = int(result.get("match_score", 0))
-    advantages = result.get("advantages", [])
-    risks = result.get("risks", [])
-    advice = result.get("advice", "")
-
-    def bullets(items: List[str]) -> str:
-        return "\n".join([f"* {i}" for i in items]) if items else "_（无）_"
-
-    md = f"""### 匹配度：**{score}%**
-
-**候选人优势**
-{bullets(advantages)}
-
-**潜在风险**
-{bullets(risks)}
-
-**综合建议**
-{advice}
-"""
-    return md
