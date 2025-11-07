@@ -3,28 +3,22 @@ import os
 import streamlit as st
 from dotenv import load_dotenv
 
-# from prompts import SYSTEM_PROMPT, USER_TEMPLATE
 load_dotenv()
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT")
 USER_TEMPLATE = os.getenv("USER_TEMPLATE")
-
 
 from match_engine import (
     extract_text_from_upload, call_qwen_json, render_markdown_report, hash_inputs
 )
 
+
 st.set_page_config(page_title="HireStream Match — 简历与JD智能匹配", page_icon="🧲", layout="centered")
 
-# HERO = "# HireStream Match\n_极简 · 一页式 · 开箱即用_"
-# st.markdown(HERO)
-# # 使用 st.markdown 在页面上显示英雄标题
 
 # Top small tip
 st.caption("提示：粘贴JD + 上传简历后，会自动分析，无需点击按钮。")
 
 # --- Layout: three blocks ---
-# with st.container(border=True):
-#     jd_text = st.text_area("职位描述（JD）", height=220, placeholder="在此粘贴JD文本……", key="jd_text")
 with st.container(border=True):
     jd_text = st.text_area(
         "职位描述（JD）",
@@ -110,7 +104,7 @@ st.caption("© 2025 HireStream Match · Powered by Qwen-3 Max")
 st.markdown("""
 <style>
 header[data-testid="stHeader"]{display:none;}
-/* 关键：把视图容器的顶边距清零（覆盖 header 预留的 offset）*/
+/* 把视图容器的顶边距清零（覆盖 header 预留的 offset）*/
 div[data-testid="stAppViewContainer"]{padding-top:0 !important;}
 /* 收紧首个区块与 H1 的距离 */
 div.block-container{padding-top:1rem;}
