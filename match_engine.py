@@ -12,27 +12,11 @@ import json
 import os
 import re
 import time
-import hashlib
-from typing import Dict, Any, List, Optional, Tuple
-# from dotenv import load_dotenv
+from typing import Dict, Any, List, Optional
 from qwen_pdf_ocr import QwenPDFOCR
 
 # --- 轻量级、纯内存文件解析 ---
-# def _read_pdf_bytes_to_text(data: bytes) -> str:
-#     """
-#     延迟导入只牺牲首调用的极小成本，换来更快启动、更少依赖耦合。
-#     若该函数是热点且对 p99 延迟敏感，再改为顶部导入或在启动阶段预热即可。
-#     """
-#     import pdfplumber  # type: ignore
-#     text_parts: List[str] = []
-#     with pdfplumber.open(io.BytesIO(data)) as pdf:
-#         for page in pdf.pages:
-#             page_text = page.extract_text() or ""
-#             text_parts.append(page_text)
-#     return "\n".join(text_parts).strip()
 def _read_pdf_bytes_to_text(data: bytes) -> str:
-    import os
-    # load_dotenv()
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("未配置 DASHSCOPE_API_KEY 环境变量。")
@@ -246,10 +230,3 @@ def render_markdown_report(result: Dict[str, Any]) -> str:
 {advice}
 """
     return md
-
-def hash_inputs(jd_text: str, resume_text: str) -> str:
-    h = hashlib.sha256()
-    h.update(jd_text.encode("utf-8", errors="ignore"))
-    h.update(b"\n----\n")
-    h.update(resume_text.encode("utf-8", errors="ignore"))
-    return h.hexdigest()
