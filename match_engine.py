@@ -14,6 +14,7 @@ import re
 import time
 from typing import Dict, Any, List, Optional
 from qwen_pdf_ocr import QwenPDFOCR
+from openai import OpenAI
 
 # --- 轻量级、纯内存文件解析 ---
 def _read_pdf_bytes_to_text(data: bytes) -> str:
@@ -37,31 +38,17 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
       - 环境变量中存在 OPENAI_API_KEY 或 DASHSCOPE_API_KEY（两者任选其一）
       - 可选环境变量 OPENAI_BASE_URL（未设置则默认使用 DashScope 中国区兼容端点）
     """
+    client = OpenAI(
+        api_key=os.getenv("DASHSCOPE_API_KEY"),
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    # # 在 OpenAI SDK >=1.40 版本中可通过 with_options 设置请求超时
+    # try:
+    #     client = client.with_options(timeout=timeout)
+    # except Exception:
+    #     # 兼容旧版 SDK（无 with_options 方法时忽略）
+    #     pass
 
-    from openai import OpenAI  # type: ignore
-
-
-    # load_dotenv()  # 必须在读取环境变量之前调用
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-    if not api_key:
-        raise RuntimeError("未检测到 OPENAI_API_KEY 或 DASHSCOPE_API_KEY 环境变量。")
-
-    base_url = os.getenv("OPENAI_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    # 在 OpenAI SDK >=1.40 版本中可通过 with_options 设置请求超时
-    try:
-        client = client.with_options(timeout=timeout)
-    except Exception:
-        # 兼容旧版 SDK（无 with_options 方法时忽略）
-        pass
-
-    # 发起 ChatCompletion 调用
-    # 关键参数：
-    #   - model: 指定使用的模型（如 "qwen-plus"）
-    #   - messages: 聊天消息列表，格式与 OpenAI 一致 [{"role": "user", "content": "..."}]
-    #   - temperature: 控制随机性，0.2 较为稳定
-    #   - max_tokens: 限制返回最大 token 数，防止生成过长
-    #   - stream=False: 关闭流式输出，直接一次性返回结果
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
@@ -74,79 +61,39 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
     content = resp.choices[0].message.content or ""
     return content
 
-def _call_dashscope_sdk(messages: List[Dict[str, str]], model: str, timeout: int) -> str:
-    """
-    通过 DashScope 原生 SDK 调用模型（非 OpenAI 兼容模式）。
-    说明：
-      - DashScope 不同版本的 SDK 接口略有差异。
-      - 较新版本支持直接传入 "messages"（类似 OpenAI 格式）；
-        旧版可能只接受单字符串 "prompt"。
-      - 因此代码会先尝试使用 "messages" 调用，如失败则回退到 "prompt" 方式。
-    """
-    import dashscope  # type: ignore
-    from dashscope import Generation  # type: ignore
-
-    # API key
-    api_key = os.getenv("DASHSCOPE_API_KEY") or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("未检测到 DASHSCOPE_API_KEY 或 OPENAI_API_KEY 环境变量。")
-    dashscope.api_key = api_key  # type: ignore
-
-    # Some versions accept 'messages' directly, others accept 'input' dict.
-    # We try 'input' schema first.
-    try:
-        resp = Generation.call(
-            model=model,
-            input={"messages": messages},
-            timeout=timeout,
-        )
-        # resp.output.text in newer SDKs; older: 'output' may contain 'choices'
-        content = ""
-        if hasattr(resp, "output") and resp.output:
-            out = resp.output
-            if isinstance(out, dict):
-                # Try modern choices format
-                try:
-                    content = out["choices"][0]["message"]["content"]
-                except Exception:
-                    content = out.get("text", "")
-        if not content and hasattr(resp, "output_text"):
-            content = getattr(resp, "output_text")
-        if not content:
-            content = str(resp)
-        return content
-    except Exception:
-        # Fallback: concatenate into a single prompt
-        prompt = "\n\n".join([m.get("content", "") for m in messages])
-        resp = Generation.call(model=model, prompt=prompt, timeout=timeout)
-        if hasattr(resp, "output_text"):
-            return resp.output_text
-        if hasattr(resp, "output") and isinstance(resp.output, dict):
-            try:
-                return resp.output.get("text", "") or resp.output["choices"][0]["message"]["content"]
-            except Exception:
-                pass
-        return str(resp)
-
 def call_qwen_json(
     system_prompt: str, user_prompt: str,
     model: str = None, timeout: int = 10, retries: int = 1
 ) -> Dict[str, Any]:
     """
-    Call Qwen and parse JSON as required by our template.
-    Returns a dict with keys: match_score, advantages, risks, advice
+    调用 Qwen（通义千问）模型生成 JSON 格式的结构化分析结果。
+
+    本函数是调用大模型服务并进行数据处理的核心封装。它通过尝试不同的
+    客户端（优先使用 DashScope SDK）与模型通信，并执行多次重试以提高
+    调用成功率。最重要的是，它对模型的原始输出进行鲁棒的 JSON 提取和
+    数据规范化，以确保返回的结果符合预期的结构和约束。
     """
-    model = model or os.getenv("QWEN_MODEL") or os.getenv("OPENAI_MODEL") or "qwen-max"
+    # 确定模型名称：优先使用传入参数，其次是环境变量，最后是默认值
+    # model = model or os.getenv("QWEN_MODEL") or os.getenv("OPENAI_MODEL") or "qwen-max"
+    model = "qwen-max"
+
+    # 构造标准的消息列表 (Messages)，用于 API 调用
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}]
-    last_err: Optional[Exception] = None
+
+    last_err: Optional[Exception] = None  # 存储最后一次发生的异常
+
+    # 开始重试循环：总共尝试 retries + 1 次
     for attempt in range(retries + 1):
         try:
-            # Prefer native DashScope SDK; if not installed, use OpenAI-compatible client
-            try:
-                content = _call_dashscope_sdk(messages, model=model, timeout=timeout)
-            except Exception:
-                content = _call_dashscope_via_openai(messages, model=model, timeout=timeout)
+            # --- 1. API 调用 ---
+            # 尝试使用原生 DashScope SDK 进行调用
+            content = _call_dashscope_sdk(messages, model=model, timeout=timeout)
+            # try:
+            #     content = _call_dashscope_sdk(messages, model=model, timeout=timeout)
+            # except Exception:
+            #     content = _call_dashscope_via_openai(messages, model=model, timeout=timeout)
+            #     pass
 
             # Extract JSON payload robustly (handles code fences)
             json_str = _extract_json(content)
@@ -171,11 +118,9 @@ def _extract_json(text: str) -> str:
     m = _JSON_BLOCK_RE.search(text)
     if m:
         return m.group(1)
-    # If the whole text looks like JSON
     text = text.strip()
     if text.startswith("{") and text.endswith("}"):
         return text
-    # Try to salvage by finding first { ... }
     start = text.find("{")
     end = text.rfind("}")
     if 0 <= start < end:
@@ -206,4 +151,3 @@ def _ensure_list_of_str(x: Any) -> List[str]:
         parts = re.split(r"[;\n•·\-]+", x)
         return [p.strip() for p in parts if p.strip()]
     return []
-
