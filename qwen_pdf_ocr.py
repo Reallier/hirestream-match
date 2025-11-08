@@ -237,35 +237,6 @@ class QwenPDFOCR:
 
     # ------------------ 对外主流程 ------------------
 
-    # def run(self) -> str:
-    #     """执行 PDF 全量 OCR，返回按页拼接的文本。"""
-    #     lines = []
-    #
-    #     # 直接从 bytes 或路径打开 PDF（避免无谓的临时落盘）
-    #     if self.pdf_bytes:
-    #         doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
-    #     else:
-    #         doc = fitz.open(self.pdf_path)
-    #
-    #     with doc:
-    #         zoom = self.dpi / 72.0
-    #         mat = fitz.Matrix(zoom, zoom)
-    #         for i, page in enumerate(doc):
-    #             self._log(f"\n====== 处理第 {i+1} 页 ======")
-    #             pix = page.get_pixmap(matrix=mat, alpha=False)
-    #             pil_img = self._pix_to_pil(pix)
-    #             img_bytes = self._pil_to_jpeg_bytes(pil_img, quality=85)
-    #             self._log(">>> 图像大小:", len(img_bytes), "bytes")
-    #             text = self._ocr_one_image(img_bytes)
-    #             if not text:
-    #                 text = "[OCR 失败: 未返回文本]"
-    #             lines.append(f"===[PAGE {i+1}]===\n{text}\n")
-    #
-    #     return "\n".join(lines)
-
-
-    # ------------------ 对外主流程 ------------------
-
     def run(self, max_workers: int = 10) -> str:
         """
         【优化版】执行 PDF 全量 OCR，并发处理页面以提高速度。
