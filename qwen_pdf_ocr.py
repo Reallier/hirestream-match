@@ -7,10 +7,8 @@ Qwen PDF OCR 封装类（支持 pdf_path 或 pdf_bytes）
 import os, io, base64, json, traceback, tempfile, sys
 import fitz
 from PIL import Image
-from loguru import logger
+from log import logger
 
-# 移除 loguru 的默认 handler，以便我们自定义
-logger.remove()
 
 class QwenPDFOCR:
     DEFAULT_HINT = (
@@ -51,29 +49,6 @@ class QwenPDFOCR:
         self.ocr_hint = ocr_hint or self.DEFAULT_HINT
         self.timeout = timeout
         self.verbose = verbose
-
-        # --- Loguru 配置修改 ---
-        log_level = "INFO" if verbose else "WARNING"
-
-        # 1. 保留你原来的控制台 handler (虽然它可能被 Streamlit 吞掉)
-        logger.add(
-            sys.stderr,
-            level=log_level,
-            format="{time:HH:mm:ss.SSS} | {level:<8} | {thread.name:<15} | {name}:{function} - {message}",
-            colorize=True,
-            enqueue=True
-        )
-
-        # 2. 【关键】添加一个文件 handler 作为“黑匣子”
-        # 无论 Streamlit 怎么做，日志都会被可靠地写入这个文件
-        logger.add(
-            "ocr_debug.log",  # <-- 日志文件名
-            level="DEBUG",  # <-- 记录所有级别的日志到文件
-            rotation="10 MB",  # <-- 10MB后自动分割
-            enqueue=True,  # <-- 线程/进程安全
-            format="{time} | {level:<8} | {thread.name:<15} | {name}:{function}:{line} - {message}"  # 文件中记录更详细的格式
-        )
-        # --- 配置完毕 ---
 
         # 清理代理，设置地区 base_url
         for k in ("HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "REQUESTS_CA_BUNDLE"):
@@ -135,11 +110,6 @@ class QwenPDFOCR:
             timeout=self.timeout,
         )
 
-    def _log(self, *args):
-        # 【修改】直接调用全局的 loguru logger
-        message = " ".join(map(str, args))
-        logger.info(message)
-
     # ------------------ 响应解析 ------------------
 
     def _parse_resp(self, resp):
@@ -147,23 +117,23 @@ class QwenPDFOCR:
         for k in ("status_code", "code", "message"):
             v = getattr(resp, k, None)
             if v is not None:
-                self._log(f"    {k} =", v)
+                logger.info(f"    {k} =", v)
                 logger.info(f"    {k} = {v}")
 
         out = getattr(resp, "output", {}) or {}
-        self._log(">>> resp.output keys:", list(out.keys()) if isinstance(out, dict) else type(out))
+        logger.info(">>> resp.output keys:", list(out.keys()) if isinstance(out, dict) else type(out))
         logger.info(f">>> resp.output keys: {list(out.keys()) if isinstance(out, dict) else type(out)}")
 
         choices = out.get("choices") or out.get("outputs") or []
         if choices:
             msg = choices[0].get("message") or choices[0].get("messages", [{}])[0]
             content = msg.get("content", [])
-            self._log(f">>> choices[0].content 类型: {type(content)}")
+            logger.info(f">>> choices[0].content 类型: {type(content)}")
             if isinstance(content, list):
                 texts = [c.get("text", "") for c in content if isinstance(c, dict) and "text" in c]
                 text = "\n".join([t for t in texts if t]).strip()
                 if text:
-                    self._log(">>> 从 choices 解析成功，长度:", len(text))
+                    logger.info(">>> 从 choices 解析成功，长度:", len(text))
                     return text
             elif isinstance(content, str) and content.strip():
                 return content.strip()
@@ -174,16 +144,16 @@ class QwenPDFOCR:
         except Exception:
             ot = None
         if ot:
-            self._log(">>> 使用 resp.output_text 解析成功")
+            logger.info(">>> 使用 resp.output_text 解析成功")
             return str(ot).strip()
 
         # 打印原始结构帮助诊断
         try:
             raw = resp.to_dict() if hasattr(resp, "to_dict") else getattr(resp, "__dict__", {})
-            self._log(">>> 原始响应（截断 2000 字）：")
-            self._log(json.dumps(raw, ensure_ascii=False, indent=2)[:2000])
+            logger.info(">>> 原始响应（截断 2000 字）：")
+            logger.info(json.dumps(raw, ensure_ascii=False, indent=2)[:2000])
         except Exception:
-            self._log(">>> 无法序列化 resp，直接打印对象：", resp)
+            logger.info(">>> 无法序列化 resp，直接打印对象：", resp)
 
         return None
 
@@ -200,17 +170,17 @@ class QwenPDFOCR:
             b64 = base64.b64encode(img_bytes).decode("ascii")
             data_url = f"data:image/jpeg;base64,{b64}"
             msgs = [{"role": "user", "content": [{"text": self.ocr_hint}, {"image": data_url}]}]
-            self._log(">>> 尝试方案1: data:url")
+            logger.info(">>> 尝试方案1: data:url")
             resp = self._call_qwen(msgs)
             text = self._parse_resp(resp)
             if text:
                 return text
             else:
-                self._log(">>> 方案1返回不可解析文本，切换到方案2")
+                logger.info(">>> 方案1返回不可解析文本，切换到方案2")
         except Exception as e:
-            self._log("❌ 方案1调用异常:", e)
+            logger.info("❌ 方案1调用异常:", e)
             traceback.print_exc()
-            self._log(">>> 切换到方案2")
+            logger.info(">>> 切换到方案2")
 
         # 方案2：落盘 file://
         tmp_path = None
@@ -220,12 +190,12 @@ class QwenPDFOCR:
                 tmp_path = f.name
             file_url = f"file://{tmp_path.replace(os.sep, '/')}"
             msgs = [{"role": "user", "content": [{"text": self.ocr_hint}, {"image": file_url}]}]
-            self._log(">>> 尝试方案2: file:// 上传", file_url)
+            logger.info(">>> 尝试方案2: file:// 上传", file_url)
             resp = self._call_qwen(msgs)
             text = self._parse_resp(resp)
             return text or "[OCR 失败: 无法从响应中解析文本]"
         except Exception as e:
-            self._log("❌ 方案2调用异常:", e)
+            logger.info("❌ 方案2调用异常:", e)
             traceback.print_exc()
             return f"[API调用失败: {e}]"
         finally:
@@ -246,44 +216,44 @@ class QwenPDFOCR:
         page_image_bytes_list = []  # 存储所有待处理的页面图像
 
         # --- 阶段1：串行准备所有图像（CPU密集型，保持在主线程）---
-        self._log(f"开始准备 PDF 图像（串行），共 {self.pdf_path or 'bytes data'}...")
+        logger.info(f"开始准备 PDF 图像（串行），共 {self.pdf_path or 'bytes data'}...")
         try:
             if self.pdf_bytes:
                 doc = fitz.open(stream=self.pdf_bytes, filetype="pdf")
             else:
                 doc = fitz.open(self.pdf_path)
         except Exception as e:
-            self._log(f"❌ 打开 PDF 失败: {e}")
+            logger.info(f"❌ 打开 PDF 失败: {e}")
             return f"[错误: 无法打开 PDF 文件 {e}]"
 
         with doc:
             zoom = self.dpi / 72.0
             mat = fitz.Matrix(zoom, zoom)
             for i, page in enumerate(doc):
-                self._log(f"    正在渲染第 {i + 1} 页...")
+                logger.info(f"    正在渲染第 {i + 1} 页...")
                 pix = page.get_pixmap(matrix=mat, alpha=False)
                 pil_img = self._pix_to_pil(pix)
                 img_bytes = self._pil_to_jpeg_bytes(pil_img, quality=85)
                 # 存储待处理的数据
                 page_image_bytes_list.append((i + 1, img_bytes))
 
-        self._log(f"✅ 所有页面图像准备完毕，共 {len(page_image_bytes_list)} 页。")
+        logger.info(f"✅ 所有页面图像准备完毕，共 {len(page_image_bytes_list)} 页。")
 
         # --- 阶段2：并发执行 OCR（I/O密集型）---
         # 我们需要一个辅助函数来解包元组并调用 _ocr_one_image
         # 这样日志才能正确打印页码
         def ocr_task(page_data: tuple[int, bytes]) -> tuple[int, str]:
             page_num, img_bytes = page_data
-            self._log(f"\n====== [并发] 开始处理第 {page_num} 页 ======")
-            self._log(f">>> 图像大小:", len(img_bytes), "bytes", f"(Page {page_num})")
+            logger.info(f"\n====== [并发] 开始处理第 {page_num} 页 ======")
+            logger.info(f">>> 图像大小:", len(img_bytes), "bytes", f"(Page {page_num})")
 
-            # _ocr_one_image 内部的 self._log 也会被调用
+            # _ocr_one_image 内部的 logger.info 也会被调用
             # 注意：来自不同线程的 verbose 日志会交错出现，这是正常的
             text = self._ocr_one_image(img_bytes)
 
             if not text:
                 text = "[OCR 失败: 未返回文本]"
-            self._log(f"====== [并发] 第 {page_num} 页处理完毕 ======")
+            logger.info(f"====== [并发] 第 {page_num} 页处理完毕 ======")
             return (page_num, text)
 
         # 按顺序存储最终结果
@@ -293,7 +263,7 @@ class QwenPDFOCR:
 
         # 使用 ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            self._log(f"🚀 启动线程池 (max_workers={max_workers})，开始并发 OCR...")
+            logger.info(f"🚀 启动线程池 (max_workers={max_workers})，开始并发 OCR...")
 
             # 提交所有任务
             # 我们使用 submit 而不是 map，以便在日志中更好地跟踪
@@ -309,14 +279,14 @@ class QwenPDFOCR:
                     page_num_result, text_result = future.result()
                     page_results[page_num_result - 1] = text_result  # 放到正确的位置
                     processed_count += 1
-                    self._log(
+                    logger.info(
                         f"    (进度: {processed_count}/{len(page_image_bytes_list)}) 第 {page_num} 页结果已获取。")
                 except Exception as exc:
-                    self._log(f"❌ 第 {page_num} 页在并发处理时发生严重错误: {exc}")
+                    logger.info(f"❌ 第 {page_num} 页在并发处理时发生严重错误: {exc}")
                     traceback.print_exc()
                     page_results[page_num - 1] = f"[OCR 失败: 发生异常 {exc}]"
 
-        self._log("✅ 所有并发任务完成。")
+        logger.info("✅ 所有并发任务完成。")
 
         # --- 阶段3：汇总结果 ---
         for i, text in enumerate(page_results):
