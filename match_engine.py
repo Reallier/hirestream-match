@@ -15,12 +15,11 @@ import time
 from typing import Dict, Any, List, Optional
 from qwen_pdf_ocr import QwenPDFOCR
 from openai import OpenAI
+from log import logger as log
 
 # --- 轻量级、纯内存文件解析 ---
 def _read_pdf_bytes_to_text(data: bytes) -> str:
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("未配置 DASHSCOPE_API_KEY 环境变量。")
     return QwenPDFOCR.from_bytes(data, api_key=api_key, region="cn", verbose=False).run().strip()
 
 def extract_text_from_upload(filename: str, data: bytes) -> str:
@@ -42,12 +41,6 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
         api_key=os.getenv("DASHSCOPE_API_KEY"),
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
-    # # 在 OpenAI SDK >=1.40 版本中可通过 with_options 设置请求超时
-    # try:
-    #     client = client.with_options(timeout=timeout)
-    # except Exception:
-    #     # 兼容旧版 SDK（无 with_options 方法时忽略）
-    #     pass
 
     resp = client.chat.completions.create(
         model=model,
@@ -62,8 +55,8 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
     return content
 
 def call_qwen_json(
-    system_prompt: str, user_prompt: str,
-    model: str = None, timeout: int = 10, retries: int = 1
+    user_prompt: str,
+    retries: int = 1
 ) -> Dict[str, Any]:
     """
     调用 Qwen（通义千问）模型生成 JSON 格式的结构化分析结果。
@@ -74,12 +67,14 @@ def call_qwen_json(
     数据规范化，以确保返回的结果符合预期的结构和约束。
     """
     # 确定模型名称：优先使用传入参数，其次是环境变量，最后是默认值
-    # model = model or os.getenv("QWEN_MODEL") or os.getenv("OPENAI_MODEL") or "qwen-max"
-    model = "qwen-max"
+    model = os.getenv("QWEN_MODEL")
+    system_prompt = os.getenv("SYSTEM_PROMPT")
 
     # 构造标准的消息列表 (Messages)，用于 API 调用
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}]
+
+    log.info("2222222222222222222222222222model_request | model={} user_prompt={}", model, messages)
 
     last_err: Optional[Exception] = None  # 存储最后一次发生的异常
 
@@ -87,18 +82,12 @@ def call_qwen_json(
     for attempt in range(retries + 1):
         try:
             # --- 1. API 调用 ---
-            # 尝试使用原生 DashScope SDK 进行调用
-            content = _call_dashscope_sdk(messages, model=model, timeout=timeout)
-            # try:
-            #     content = _call_dashscope_sdk(messages, model=model, timeout=timeout)
-            # except Exception:
-            #     content = _call_dashscope_via_openai(messages, model=model, timeout=timeout)
-            #     pass
+            content = _call_dashscope_via_openai(messages, model=model, timeout=10)
+            # 加个日志输出返回内容
+            log.info("！！！！！！！！！！！！！！！！model_response | model={} content={}", model, content)
 
-            # Extract JSON payload robustly (handles code fences)
             json_str = _extract_json(content)
             result = json.loads(json_str)
-            # Validate fields
             result = _normalize_result(result)
             return result
         except Exception as e:
