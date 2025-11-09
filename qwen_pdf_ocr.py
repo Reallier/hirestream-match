@@ -80,6 +80,40 @@ class QwenPDFOCR:
             verbose=verbose,
         )
 
+    @staticmethod
+    def from_image_bytes(
+        data: bytes,
+        api_key: str,
+        model: str = "qwen-vl-ocr",
+        region: str = "cn",
+        ocr_hint: str | None = None,
+        timeout: tuple[int, int] = (8, 120),
+        verbose: bool = True,
+    ) -> str:
+        """
+        直接处理单张图片的OCR（不创建实例，直接返回文本）
+        :param data: 图片的字节内容
+        :param api_key: DashScope API Key
+        :param model: 模型名称
+        :param region: "cn" 或 "intl"
+        :param ocr_hint: OCR提示词
+        :param timeout: 超时设置
+        :param verbose: 是否打印日志
+        :return: OCR识别的文本
+        """
+        instance = QwenPDFOCR(
+            pdf_path=None,
+            pdf_bytes=None,
+            api_key=api_key,
+            model=model,
+            region=region,
+            dpi=400,
+            ocr_hint=ocr_hint,
+            timeout=timeout,
+            verbose=verbose,
+        )
+        return instance._ocr_one_image(data)
+
     # ------------------ 工具方法 ------------------
 
     @staticmethod
