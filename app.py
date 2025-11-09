@@ -37,10 +37,11 @@ with st.container(border=True):
 resume_text = ""
 with st.container(border=True):
     up = st.file_uploader(
-        "上传候选人简历（PDF ≤ 2MB）",
-        type=["pdf"],
+        "上传候选人简历（PDF 或 图片格式 ≤ 2MB）",
+        type=["pdf", "jpg", "jpeg", "png", "gif", "bmp", "webp"],
         accept_multiple_files=False,
-        key="resume_file"
+        key="resume_file",
+        help="支持 PDF 和常见图片格式（JPG/PNG/GIF/BMP/WEBP）"
     )
 
     if up is not None:
