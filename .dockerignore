@@ -1,4 +1,9 @@
 .git
-.venv
-__pycache__
+__pycache__/
+*.pyc
 .env
+.venv/
+dist/
+build/
+.cache/
+.wheels/
