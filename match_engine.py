@@ -22,11 +22,18 @@ def _read_pdf_bytes_to_text(data: bytes) -> str:
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
     return QwenPDFOCR.from_bytes(data, api_key=api_key, region="cn", verbose=False).run().strip()
 
+def _read_image_bytes_to_text(data: bytes) -> str:
+    """处理图片格式的简历（JPG/PNG等）"""
+    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    return QwenPDFOCR.from_image_bytes(data, api_key=api_key, region="cn", verbose=False)
+
 def extract_text_from_upload(filename: str, data: bytes) -> str:
     name = (filename or "").lower()
     if name.endswith(".pdf"):
         return _read_pdf_bytes_to_text(data)
-    raise ValueError("不支持的文件类型，仅支持 PDF")
+    elif name.endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")):
+        return _read_image_bytes_to_text(data)
+    raise ValueError("不支持的文件类型，仅支持 PDF 和常见图片格式（JPG/PNG/GIF/BMP/WEBP）")
 
 # --- LLM 调用（通过 DashScope 或兼容 OpenAI 的 DashScope 接口） ---
 def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeout: int) -> str:
