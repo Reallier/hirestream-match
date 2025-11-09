@@ -8,6 +8,7 @@ import os, io, base64, json, traceback, tempfile, sys
 import fitz
 from PIL import Image
 from log import logger
+import dashscope
 
 
 class QwenPDFOCR:
@@ -83,7 +84,6 @@ class QwenPDFOCR:
 
     @staticmethod
     def _set_base_url(region: str):
-        import dashscope
         dashscope.base_http_api_url = (
             "https://dashscope.aliyuncs.com/api/v1"
             if region == "cn"
