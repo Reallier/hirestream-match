@@ -59,7 +59,10 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
     # 提取返回内容。DashScope 兼容 OpenAI 格式，因此结构为：
     # resp.choices[0].message.content
     content = resp.choices[0].message.content or ""
-    return content
+    prompt_tokens = resp.usage.prompt_tokens
+    completion_tokens = resp.usage.completion_tokens
+    total_tokens = resp.usage.total_tokens
+    return content, {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens, "total_tokens": total_tokens}
 
 def call_qwen_json(
     user_prompt: str,
@@ -89,13 +92,14 @@ def call_qwen_json(
     for attempt in range(retries + 1):
         try:
             # --- 1. API 调用 ---
-            content = _call_dashscope_via_openai(messages, model=model, timeout=10)
+            content, token_usage = _call_dashscope_via_openai(messages, model=model, timeout=10)
             # 加个日志输出返回内容
             log.info("！！！！！！！！！！！！！！！！model_response | model={} content={}", model, content)
 
             json_str = _extract_json(content)
             result = json.loads(json_str)
             result = _normalize_result(result)
+            result["token_usage"] = token_usage # 将 token_usage 添加到结果中
             return result
         except Exception as e:
             last_err = e

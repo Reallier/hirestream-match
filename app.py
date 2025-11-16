@@ -4,6 +4,7 @@ import uuid
 import time
 import streamlit as st
 from dotenv import load_dotenv
+import toml # Import toml library
 
 from match_engine import extract_text_from_upload, call_qwen_json
 from utils import hash_inputs, render_markdown_report
@@ -14,6 +15,11 @@ from log import logger as log
 load_dotenv()
 USER_TEMPLATE = os.getenv("USER_TEMPLATE")
 QWEN_MODEL = os.getenv("QWEN_MODEL")
+
+# Token pricing (hypothetical, adjust as needed)
+# Example: 0.00001 USD per input token, 0.00002 USD per output token
+TOKEN_PRICE_INPUT = float(os.getenv("TOKEN_PRICE_INPUT", "0.00001"))
+TOKEN_PRICE_OUTPUT = float(os.getenv("TOKEN_PRICE_OUTPUT", "0.00002"))
 
 # -------- Page --------
 st.set_page_config(page_title="HireStream Match — 简历与JD智能匹配", page_icon="🧲", layout="centered")
@@ -105,11 +111,12 @@ with placeholder:  # 在该容器中绘制内容
                     log.info("11111111111111model_request | model={} user_prompt={}", QWEN_MODEL, USER_TEMPLATE)
                     user_prompt = USER_TEMPLATE.format(job_description=jd_text.strip(), resume_content=resume_text.strip())
                     # 调用千问模型API进行匹配度分析
-                    result = call_qwen_json(user_prompt=user_prompt,)
+                    result = call_qwen_json(user_prompt=user_prompt)
                     st.session_state["result"] = result
                     score = int(result.get("match_score", 0))
                     ms = int((time.perf_counter() - t0) * 1000)
-                    log.info("model_ok | model={} score={} ms={}", QWEN_MODEL, score, ms)
+                    token_usage = result.get("token_usage", {})
+                    log.info("model_ok | model={} score={} ms={} token_usage={}", QWEN_MODEL, score, ms, token_usage)
                 except Exception as e:
                     log.exception("model_failed | model={}", QWEN_MODEL)
                     st.error(f"模型调用失败：{e}")
@@ -123,7 +130,37 @@ with placeholder:  # 在该容器中绘制内容
             st.progress(score/100.0, text=f"匹配度 {score}%")  # 绘制进度条形式的匹配度指示器
             st.markdown(render_markdown_report(result), unsafe_allow_html=False)  # 渲染报告的 Markdown 内容
 
-st.caption("© 2025 HireStream Match · Powered by Qwen-3 Max")
+            token_usage = result.get("token_usage", {})
+
+# Get version from pyproject.toml
+try:
+    with open("pyproject.toml", "r", encoding="utf-8") as f:
+        pyproject_data = toml.load(f)
+    __version__ = pyproject_data["project"]["version"]
+except Exception:
+    __version__ = "N/A"
+
+
+
+
+
+
+# --- Resource Consumption Block ---
+if st.session_state.get("result"):
+    token_usage = st.session_state["result"].get("token_usage", {})
+    if token_usage:
+        with st.container(border=True):
+            prompt_tokens = token_usage.get('prompt_tokens', 0)
+            completion_tokens = token_usage.get('completion_tokens', 0)
+            total_tokens = token_usage.get('total_tokens', 0)
+            cost = (prompt_tokens / 1000 * TOKEN_PRICE_INPUT) + (completion_tokens / 1000 * TOKEN_PRICE_OUTPUT)
+            
+            st.markdown(
+    f"**Token 使用量:** Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens} | "
+    f"**预估费用:** RMB{cost:.6f}"
+)
+
+st.caption(f"© 2025 HireStream Match v{__version__} · Powered by Qwen-3 Max")
 
 st.markdown("""
 <style>
