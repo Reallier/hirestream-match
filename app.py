@@ -36,6 +36,7 @@ with st.container(border=True):
 # --- Resume Block ---
 resume_text = ""
 with st.container(border=True):
+    # 文件上传组件
     up = st.file_uploader(
         "上传候选人简历（PDF 或 图片格式 ≤ 2MB）",
         type=["pdf", "jpg", "jpeg", "png", "gif", "bmp", "webp"],
@@ -44,7 +45,27 @@ with st.container(border=True):
         help="支持 PDF 和常见图片格式（JPG/PNG/GIF/BMP/WEBP）"
     )
 
-    if up is not None:
+    # 添加分割线
+    st.markdown("---")
+
+    # 文本输入框
+    resume_text_input = st.text_area(
+        "或在此粘贴简历文本",
+        height=220,
+        placeholder="在此粘贴简历文本……",
+        key="resume_text"
+    )
+
+    # 若文本内容非空且刚刚变化，则自动处理
+    if resume_text_input and st.session_state.get("resume_text_last") != resume_text_input:
+        st.session_state["resume_text_last"] = resume_text_input
+        st.toast("✅ 简历文本已自动更新！")  # 右上角弹出提示框（自动消失）
+
+    # 处理简历内容获取逻辑
+    # 优先使用文本输入，其次使用文件上传
+    if resume_text_input.strip():
+        resume_text = resume_text_input.strip()
+    elif up is not None:
         log.info("upload_received | name={} size={}", up.name, up.size)
         with st.status("正在识别…", expanded=True) as status:
             if up.size > 2 * 1024 * 1024:
