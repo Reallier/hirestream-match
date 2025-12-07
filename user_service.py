@@ -24,20 +24,6 @@ load_dotenv()
 # 新用户默认免费额度（元）
 DEFAULT_FREE_QUOTA = float(os.getenv("DEFAULT_FREE_QUOTA", "1.0"))
 
-# 测试用户前缀（这些用户不受余额限制）
-TEST_USER_PREFIXES = ("mock_", "test_")
-
-
-def is_test_user(user_id: str) -> bool:
-    """
-    判断是否是测试用户（不受余额限制）
-    
-    测试用户的 user_id 以特定前缀开头，如 mock_ 或 test_
-    """
-    if not user_id:
-        return False
-    return user_id.startswith(TEST_USER_PREFIXES)
-
 
 @dataclass
 class BalanceCheckResult:
@@ -134,18 +120,6 @@ class UserService:
         Returns:
             BalanceCheckResult 余额检查结果
         """
-        # 测试用户不受余额限制
-        if is_test_user(user_id):
-            log.info("balance_check_skip | user_id={} | reason=test_user", user_id)
-            return BalanceCheckResult(
-                sufficient=True,
-                balance=999999.0,
-                free_quota=999999.0,
-                total_available=999999.0,
-                estimated_cost=estimated_cost,
-                message="测试用户（无限额度）"
-            )
-        
         user = self.get_user(user_id)
         
         if not user:
