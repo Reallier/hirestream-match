@@ -9,8 +9,17 @@ wheels/
 # Virtual environments
 .venv
 
+# 环境配置（包含敏感信息）
+.env
+
 # 提示词
 prompts.py
 
 # 数据目录（SQLite 数据库）
 data/
+
+# 日志文件
+logs/
+
+# IDE
+.idea/
