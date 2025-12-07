@@ -22,7 +22,7 @@ class QwenPDFOCR:
         pdf_path: str | None = None,
         pdf_bytes: bytes | None = None,
         api_key: str = "",
-        model: str = "qwen-vl-ocr",
+        model: str = "qwen-vl-ocr-2025-11-20",
         region: str = "cn",   # "cn" 国内；"intl" 国际
         dpi: int = 400,
         ocr_hint: str | None = None,
@@ -61,7 +61,7 @@ class QwenPDFOCR:
     def from_bytes(
         data: bytes,
         api_key: str,
-        model: str = "qwen-vl-ocr",
+        model: str = "qwen-vl-ocr-2025-11-20",
         region: str = "cn",
         dpi: int = 400,
         ocr_hint: str | None = None,
@@ -84,14 +84,14 @@ class QwenPDFOCR:
     def from_image_bytes(
         data: bytes,
         api_key: str,
-        model: str = "qwen-vl-ocr",
+        model: str = "qwen-vl-ocr-2025-11-20",
         region: str = "cn",
         ocr_hint: str | None = None,
         timeout: tuple[int, int] = (8, 120),
         verbose: bool = True,
-    ) -> str:
+    ) -> tuple[str, dict]:
         """
-        直接处理单张图片的OCR（不创建实例，直接返回文本）
+        直接处理单张图片的OCR（不创建实例，直接返回文本和token使用量）
         :param data: 图片的字节内容
         :param api_key: DashScope API Key
         :param model: 模型名称
@@ -99,7 +99,7 @@ class QwenPDFOCR:
         :param ocr_hint: OCR提示词
         :param timeout: 超时设置
         :param verbose: 是否打印日志
-        :return: OCR识别的文本
+        :return: (OCR识别的文本, token使用量字典)
         """
         instance = QwenPDFOCR(
             pdf_path=None,
@@ -134,15 +134,28 @@ class QwenPDFOCR:
     def _pix_to_pil(pix: fitz.Pixmap) -> Image.Image:
         return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-    def _call_qwen(self, messages):
+    def _call_qwen(self, messages) -> tuple:
+        """调用 Qwen API 并返回响应和 token 使用量"""
         from dashscope import MultiModalConversation
-        return MultiModalConversation.call(
+        resp = MultiModalConversation.call(
             api_key=self.api_key,
             model=self.model,
             messages=messages,
             stream=False,
             timeout=self.timeout,
         )
+        
+        # 提取 token 使用量
+        token_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        try:
+            usage = getattr(resp, "usage", None)
+            if usage:
+                token_usage["prompt_tokens"] = getattr(usage, "input_tokens", 0) or 0
+                token_usage["completion_tokens"] = getattr(usage, "output_tokens", 0) or 0
+        except Exception:
+            pass
+        
+        return resp, token_usage
 
     # ------------------ 响应解析 ------------------
 
@@ -193,22 +206,29 @@ class QwenPDFOCR:
 
     # ------------------ 关键 OCR 逻辑 ------------------
 
-    def _ocr_one_image(self, img_bytes: bytes) -> str:
+    def _ocr_one_image(self, img_bytes: bytes) -> tuple[str, dict]:
         """
         上传策略：
           1) data:url 直接传 {"image": data_url}
           2) 若 SDK 不支持，则落盘到临时文件，改用 {"image": "file://..."}
+        
+        Returns:
+            (text, token_usage) - OCR文本和token使用量
         """
+        token_usage = {"prompt_tokens": 0, "completion_tokens": 0, "model": self.model}
+        
         # 方案1：data URL
         try:
             b64 = base64.b64encode(img_bytes).decode("ascii")
             data_url = f"data:image/jpeg;base64,{b64}"
             msgs = [{"role": "user", "content": [{"text": self.ocr_hint}, {"image": data_url}]}]
             logger.info(">>> 尝试方案1: data:url")
-            resp = self._call_qwen(msgs)
+            resp, usage = self._call_qwen(msgs)
+            token_usage["prompt_tokens"] = usage.get("prompt_tokens", 0)
+            token_usage["completion_tokens"] = usage.get("completion_tokens", 0)
             text = self._parse_resp(resp)
             if text:
-                return text
+                return text, token_usage
             else:
                 logger.info(">>> 方案1返回不可解析文本，切换到方案2")
         except Exception as e:
@@ -225,13 +245,15 @@ class QwenPDFOCR:
             file_url = f"file://{tmp_path.replace(os.sep, '/')}"
             msgs = [{"role": "user", "content": [{"text": self.ocr_hint}, {"image": file_url}]}]
             logger.info(">>> 尝试方案2: file:// 上传", file_url)
-            resp = self._call_qwen(msgs)
+            resp, usage = self._call_qwen(msgs)
+            token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+            token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
             text = self._parse_resp(resp)
-            return text or "[OCR 失败: 无法从响应中解析文本]"
+            return (text or "[OCR 失败: 无法从响应中解析文本]"), token_usage
         except Exception as e:
             logger.info("❌ 方案2调用异常:", e)
             traceback.print_exc()
-            return f"[API调用失败: {e}]"
+            return f"[API调用失败: {e}]", token_usage
         finally:
             try:
                 if tmp_path and os.path.exists(tmp_path):
@@ -239,15 +261,26 @@ class QwenPDFOCR:
             except Exception:
                 pass
 
+
+
     # ------------------ 对外主流程 ------------------
 
-    def run(self, max_workers: int = 10) -> str:
+    def run(self, max_workers: int = 10) -> tuple[str, dict]:
         """
         【优化版】执行 PDF 全量 OCR，并发处理页面以提高速度。
         :param max_workers: 并发线程数，根据 API 的 QPS/QPM 限制调整
+        :return: (OCR文本, token使用量汇总)
         """
         lines = []
         page_image_bytes_list = []  # 存储所有待处理的页面图像
+        
+        # 汇总 token 使用量
+        total_token_usage = {
+            "prompt_tokens": 0, 
+            "completion_tokens": 0, 
+            "model": self.model,
+            "pages": 0
+        }
 
         # --- 阶段1：串行准备所有图像（CPU密集型，保持在主线程）---
         logger.info(f"开始准备 PDF 图像（串行），共 {self.pdf_path or 'bytes data'}...")
@@ -258,7 +291,7 @@ class QwenPDFOCR:
                 doc = fitz.open(self.pdf_path)
         except Exception as e:
             logger.info(f"❌ 打开 PDF 失败: {e}")
-            return f"[错误: 无法打开 PDF 文件 {e}]"
+            return f"[错误: 无法打开 PDF 文件 {e}]", total_token_usage
 
         with doc:
             zoom = self.dpi / 72.0
@@ -272,26 +305,27 @@ class QwenPDFOCR:
                 page_image_bytes_list.append((i + 1, img_bytes))
 
         logger.info(f"✅ 所有页面图像准备完毕，共 {len(page_image_bytes_list)} 页。")
+        total_token_usage["pages"] = len(page_image_bytes_list)
 
         # --- 阶段2：并发执行 OCR（I/O密集型）---
         # 我们需要一个辅助函数来解包元组并调用 _ocr_one_image
         # 这样日志才能正确打印页码
-        def ocr_task(page_data: tuple[int, bytes]) -> tuple[int, str]:
+        def ocr_task(page_data: tuple[int, bytes]) -> tuple[int, str, dict]:
             page_num, img_bytes = page_data
             logger.info(f"\n====== [并发] 开始处理第 {page_num} 页 ======")
             logger.info(f">>> 图像大小:", len(img_bytes), "bytes", f"(Page {page_num})")
 
-            # _ocr_one_image 内部的 logger.info 也会被调用
-            # 注意：来自不同线程的 verbose 日志会交错出现，这是正常的
-            text = self._ocr_one_image(img_bytes)
+            # _ocr_one_image 现在返回 (text, token_usage)
+            text, usage = self._ocr_one_image(img_bytes)
 
             if not text:
                 text = "[OCR 失败: 未返回文本]"
             logger.info(f"====== [并发] 第 {page_num} 页处理完毕 ======")
-            return (page_num, text)
+            return (page_num, text, usage)
 
         # 按顺序存储最终结果
         page_results = [None] * len(page_image_bytes_list)
+        page_usages = []  # 存储每页的 token 使用量
 
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -310,8 +344,9 @@ class QwenPDFOCR:
             for future in as_completed(future_to_page):
                 page_num = future_to_page[future]
                 try:
-                    page_num_result, text_result = future.result()
+                    page_num_result, text_result, usage = future.result()
                     page_results[page_num_result - 1] = text_result  # 放到正确的位置
+                    page_usages.append(usage)
                     processed_count += 1
                     logger.info(
                         f"    (进度: {processed_count}/{len(page_image_bytes_list)}) 第 {page_num} 页结果已获取。")
@@ -325,5 +360,11 @@ class QwenPDFOCR:
         # --- 阶段3：汇总结果 ---
         for i, text in enumerate(page_results):
             lines.append(f"===[PAGE {i + 1}]===\n{text}\n")
+        
+        # 汇总 token 使用量
+        for usage in page_usages:
+            total_token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+            total_token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
 
-        return "\n".join(lines)
+        return "\n".join(lines), total_token_usage
+

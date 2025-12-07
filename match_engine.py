@@ -12,28 +12,37 @@ import json
 import os
 import re
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from qwen_pdf_ocr import QwenPDFOCR
 from openai import OpenAI
 from log import logger as log
+from token_calculator import TokenCalculator
 
 # --- 轻量级、纯内存文件解析 ---
-def _read_pdf_bytes_to_text(data: bytes) -> str:
+def _read_pdf_bytes_to_text(data: bytes) -> Tuple[str, dict]:
+    """解析 PDF 并返回文本和 token 使用量"""
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
-    return QwenPDFOCR.from_bytes(data, api_key=api_key, region="cn", verbose=False).run().strip()
+    text, token_usage = QwenPDFOCR.from_bytes(data, api_key=api_key, region="cn", verbose=False).run()
+    return text.strip(), token_usage
 
-def _read_image_bytes_to_text(data: bytes) -> str:
-    """处理图片格式的简历（JPG/PNG等）"""
+def _read_image_bytes_to_text(data: bytes) -> Tuple[str, dict]:
+    """处理图片格式的简历（JPG/PNG等），返回文本和 token 使用量"""
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
-    return QwenPDFOCR.from_image_bytes(data, api_key=api_key, region="cn", verbose=False)
+    text, token_usage = QwenPDFOCR.from_image_bytes(data, api_key=api_key, region="cn", verbose=False)
+    return text, token_usage
 
-def extract_text_from_upload(filename: str, data: bytes) -> str:
+
+def extract_text_from_upload(filename: str, data: bytes) -> Tuple[str, dict]:
+    """
+    从上传文件中提取文本，返回 (文本, token使用量)
+    """
     name = (filename or "").lower()
     if name.endswith(".pdf"):
         return _read_pdf_bytes_to_text(data)
     elif name.endswith((".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp")):
         return _read_image_bytes_to_text(data)
     raise ValueError("不支持的文件类型，仅支持 PDF 和常见图片格式（JPG/PNG/GIF/BMP/WEBP）")
+
 
 # --- LLM 调用（通过 DashScope 或兼容 OpenAI 的 DashScope 接口） ---
 def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeout: int) -> str:
@@ -99,7 +108,17 @@ def call_qwen_json(
             json_str = _extract_json(content)
             result = json.loads(json_str)
             result = _normalize_result(result)
-            result["token_usage"] = token_usage # 将 token_usage 添加到结果中
+            
+            # 添加 token 使用量和费用计算
+            prompt_tokens = token_usage.get("prompt_tokens", 0)
+            completion_tokens = token_usage.get("completion_tokens", 0)
+            cost = TokenCalculator.calculate_cost(model, prompt_tokens, completion_tokens)
+            
+            result["token_usage"] = {
+                **token_usage,
+                "model": model,
+                "cost": cost
+            }
             return result
         except Exception as e:
             last_err = e
@@ -109,6 +128,7 @@ def call_qwen_json(
             raise
 
     assert False, f"Unreachable, last_err={last_err}"
+
 
 _JSON_BLOCK_RE = re.compile(r'```(?:json)?\s*(\{.*?\})\s*```', re.S)
 

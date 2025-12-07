@@ -9,6 +9,8 @@ import toml # Import toml library
 from match_engine import extract_text_from_upload, call_qwen_json
 from utils import hash_inputs, render_markdown_report
 from log import logger as log
+from token_calculator import TokenCalculator
+from pricing_config import get_model_display_name
 
 
 # -------- Env --------
@@ -16,10 +18,6 @@ load_dotenv()
 USER_TEMPLATE = os.getenv("USER_TEMPLATE")
 QWEN_MODEL = os.getenv("QWEN_MODEL")
 
-# Token pricing (hypothetical, adjust as needed)
-# Example: 0.00001 USD per input token, 0.00002 USD per output token
-TOKEN_PRICE_INPUT = float(os.getenv("TOKEN_PRICE_INPUT", "0.00001"))
-TOKEN_PRICE_OUTPUT = float(os.getenv("TOKEN_PRICE_OUTPUT", "0.00002"))
 
 # -------- Page --------
 st.set_page_config(page_title="HireStream Match — 简历与JD智能匹配", page_icon="🧲", layout="centered")
@@ -71,6 +69,7 @@ with st.container(border=True):
     # 优先使用文本输入，其次使用文件上传
     if resume_text_input.strip():
         resume_text = resume_text_input.strip()
+        st.session_state["ocr_usage"] = None  # 文本输入不需要 OCR
     elif up is not None:
         log.info("upload_received | name={} size={}", up.name, up.size)
         with st.status("正在识别…", expanded=True) as status:
@@ -80,7 +79,15 @@ with st.container(border=True):
                 log.warning("upload_rejected | reason=file_too_large | size={}", up.size)
             else:
                 try:
-                    resume_text = extract_text_from_upload(up.name, up.read())
+                    resume_text, ocr_usage = extract_text_from_upload(up.name, up.read())
+                    # 计算 OCR 费用
+                    ocr_prompt = ocr_usage.get("prompt_tokens", 0)
+                    ocr_completion = ocr_usage.get("completion_tokens", 0)
+                    ocr_model = ocr_usage.get("model", "qwen-vl-ocr-2025-11-20")
+                    ocr_cost = TokenCalculator.calculate_cost(ocr_model, ocr_prompt, ocr_completion)
+                    ocr_usage["cost"] = ocr_cost
+                    st.session_state["ocr_usage"] = ocr_usage
+                    log.info("ocr_completed | model={} tokens={} cost={}", ocr_model, ocr_prompt + ocr_completion, ocr_cost)
                 except Exception as e:
                     status.update(label="解析失败", state="error")
                     st.error(f"解析失败：{e}")
@@ -141,24 +148,64 @@ except Exception:
     __version__ = "N/A"
 
 
-
-
-
-
 # --- Resource Consumption Block ---
 if st.session_state.get("result"):
-    token_usage = st.session_state["result"].get("token_usage", {})
-    if token_usage:
+    analysis_usage = st.session_state["result"].get("token_usage", {})
+    ocr_usage = st.session_state.get("ocr_usage", {})
+    
+    # 只有当有 token 使用数据时才显示
+    if analysis_usage or ocr_usage:
         with st.container(border=True):
-            prompt_tokens = token_usage.get('prompt_tokens', 0)
-            completion_tokens = token_usage.get('completion_tokens', 0)
-            total_tokens = token_usage.get('total_tokens', 0)
-            cost = (prompt_tokens / 1000 * TOKEN_PRICE_INPUT) + (completion_tokens / 1000 * TOKEN_PRICE_OUTPUT)
+            st.markdown("### 💰 费用明细")
             
-            st.markdown(
-    f"**Token 使用量:** Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens} | "
-    f"**预估费用:** RMB{cost:.6f}"
-)
+            # 计算各项费用
+            total_cost = 0.0
+            
+            # OCR 费用（如果有）
+            if ocr_usage:
+                ocr_prompt = ocr_usage.get("prompt_tokens", 0)
+                ocr_completion = ocr_usage.get("completion_tokens", 0)
+                ocr_total = ocr_prompt + ocr_completion
+                ocr_cost = ocr_usage.get("cost", 0)
+                ocr_model = ocr_usage.get("model", "qwen-vl-ocr-2025-11-20")
+                ocr_pages = ocr_usage.get("pages", 1)
+                total_cost += ocr_cost
+                
+                st.markdown(f"""
+**🔍 OCR 识别** ({get_model_display_name(ocr_model)})
+- 页数: {ocr_pages}
+- Token: 输入 {ocr_prompt:,} + 输出 {ocr_completion:,} = **{ocr_total:,}**
+- 费用: **¥{ocr_cost:.6f}**
+""")
+            
+            # 分析费用
+            if analysis_usage:
+                analysis_prompt = analysis_usage.get("prompt_tokens", 0)
+                analysis_completion = analysis_usage.get("completion_tokens", 0)
+                analysis_total = analysis_usage.get("total_tokens", analysis_prompt + analysis_completion)
+                analysis_cost = analysis_usage.get("cost", 0)
+                analysis_model = analysis_usage.get("model", QWEN_MODEL)
+                total_cost += analysis_cost
+                
+                # 显示阶梯信息
+                tier_info = ""
+                if analysis_prompt <= 32000:
+                    tier_info = "≤32k"
+                elif analysis_prompt <= 128000:
+                    tier_info = "32k~128k"
+                else:
+                    tier_info = "128k~256k"
+                
+                st.markdown(f"""
+**📊 匹配分析** ({get_model_display_name(analysis_model)})
+- 阶梯: {tier_info}
+- Token: 输入 {analysis_prompt:,} + 输出 {analysis_completion:,} = **{analysis_total:,}**
+- 费用: **¥{analysis_cost:.6f}**
+""")
+            
+            # 总计
+            st.markdown("---")
+            st.markdown(f"**📈 总费用: ¥{total_cost:.6f}**")
 
 st.caption(f"© 2025 HireStream Match v{__version__} · Powered by Qwen-3 Max")
 
