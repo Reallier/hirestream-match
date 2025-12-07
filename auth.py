@@ -22,9 +22,6 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 # 认证模式：mock / jwt
 USER_AUTH_MODE = os.getenv("USER_AUTH_MODE", "mock")
 
-# 测试后门密钥（用于内部成员快速访问，设置后可通过 ?mock_user=xxx&mock_key=secret 登录）
-MOCK_SECRET_KEY = os.getenv("MOCK_SECRET_KEY", "")
-
 
 @dataclass
 class UserInfo:
@@ -100,28 +97,20 @@ def get_mock_user(mock_id: Optional[str] = None) -> UserInfo:
 
 def authenticate_user(
     token: Optional[str] = None, 
-    mock_id: Optional[str] = None,
-    mock_key: Optional[str] = None
+    mock_id: Optional[str] = None
 ) -> Optional[UserInfo]:
     """
     认证用户
     
     根据 USER_AUTH_MODE 配置决定使用 JWT 还是 Mock 模式。
-    支持测试后门：如果 MOCK_SECRET_KEY 已配置且 mock_key 匹配，可直接使用 mock_user 登录。
     
     Args:
         token: JWT Token（jwt 模式时需要）
-        mock_id: Mock 用户 ID（mock 模式或测试后门时使用）
-        mock_key: 测试后门密钥（可选，用于内部成员快速访问）
+        mock_id: Mock 用户 ID（mock 模式时可选）
         
     Returns:
         UserInfo 如果认证成功，否则 None
     """
-    # 测试后门：如果提供了正确的 mock_key，直接使用 mock_user 登录
-    if MOCK_SECRET_KEY and mock_key and mock_key == MOCK_SECRET_KEY:
-        log.info("auth_mode=backdoor | mock_id={}", mock_id or "default")
-        return get_mock_user(mock_id)
-    
     if USER_AUTH_MODE == "mock":
         log.info("auth_mode=mock | mock_id={}", mock_id)
         return get_mock_user(mock_id)

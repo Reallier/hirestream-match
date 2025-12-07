@@ -95,6 +95,33 @@ class StatsResponse(BaseModel):
     today_new_users: int
 
 
+class CreateUserRequest(BaseModel):
+    """创建用户请求"""
+    nickname: str
+    initial_balance: float = 0.0
+    initial_free_quota: float = 1.0
+
+
+class CreateUserResponse(BaseModel):
+    """创建用户响应"""
+    success: bool
+    message: str
+    user_id: Optional[str] = None
+    password: Optional[str] = None  # 随机生成的密码，只返回一次
+
+
+class ResetPasswordRequest(BaseModel):
+    """重置密码请求"""
+    pass  # 无需传参，自动生成新密码
+
+
+class ResetPasswordResponse(BaseModel):
+    """重置密码响应"""
+    success: bool
+    message: str
+    new_password: Optional[str] = None
+
+
 # ============ 认证相关 ============
 
 def create_admin_token(username: str) -> str:
@@ -269,3 +296,112 @@ async def get_stats(admin: str = Depends(verify_admin_token)):
 async def health_check():
     """健康检查"""
     return {"status": "ok", "service": "admin-api"}
+
+
+def generate_password(length: int = 12) -> str:
+    """生成随机密码"""
+    import string
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+def generate_user_id() -> str:
+    """生成用户 ID"""
+    import uuid
+    return f"user_{uuid.uuid4().hex[:8]}"
+
+
+@admin_app.post("/api/admin/users", response_model=CreateUserResponse)
+async def create_user(
+    request: CreateUserRequest,
+    admin: str = Depends(verify_admin_token)
+):
+    """创建新用户（随机生成密码）"""
+    # 生成用户 ID 和密码
+    user_id = generate_user_id()
+    password = generate_password()
+    
+    with get_db_session() as db:
+        # 检查用户 ID 是否已存在
+        existing = db.query(User).filter(User.user_id == user_id).first()
+        if existing:
+            user_id = generate_user_id()  # 重新生成
+        
+        # 创建用户
+        user = User(
+            user_id=user_id,
+            nickname=request.nickname,
+            balance=request.initial_balance,
+            free_quota=request.initial_free_quota,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(user)
+        
+        # 记录初始余额交易
+        if request.initial_balance > 0:
+            tx = Transaction(
+                user_id=user_id,
+                type="admin_recharge",
+                amount=request.initial_balance,
+                balance_after=request.initial_balance,
+                remark=f"新用户初始余额 (by {admin})",
+                created_at=datetime.utcnow()
+            )
+            db.add(tx)
+        
+        # 记录免费额度
+        if request.initial_free_quota > 0:
+            tx = Transaction(
+                user_id=user_id,
+                type="free_grant",
+                amount=request.initial_free_quota,
+                balance_after=request.initial_balance,
+                remark="新用户免费额度",
+                created_at=datetime.utcnow()
+            )
+            db.add(tx)
+        
+        db.commit()
+        
+        log.info(
+            "user_created | user_id={} | nickname={} | admin={}",
+            user_id, request.nickname, admin
+        )
+        
+        return CreateUserResponse(
+            success=True,
+            message=f"用户创建成功",
+            user_id=user_id,
+            password=password
+        )
+
+
+@admin_app.post("/api/admin/users/{user_id}/reset-password", response_model=ResetPasswordResponse)
+async def reset_user_password(
+    user_id: str,
+    admin: str = Depends(verify_admin_token)
+):
+    """重置用户密码（随机生成新密码）"""
+    new_password = generate_password()
+    
+    with get_db_session() as db:
+        user = db.query(User).filter(User.user_id == user_id).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 注意：HireStream 的 User 模型没有 password 字段
+        # 密码存储在官网的数据库中
+        # 这里只是生成密码，需要在官网数据库中更新
+        
+        log.info(
+            "password_reset | user_id={} | admin={}",
+            user_id, admin
+        )
+        
+        return ResetPasswordResponse(
+            success=True,
+            message=f"密码已重置，请在官网后台更新",
+            new_password=new_password
+        )
