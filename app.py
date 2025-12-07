@@ -45,22 +45,23 @@ def get_current_user() -> UserInfo | None:
     if "current_user" in st.session_state and st.session_state["current_user"]:
         return st.session_state["current_user"]
     
-    # 从 URL 参数获取 token 或 mock_user
+    # 从 URL 参数获取认证信息
     query_params = st.query_params
     token = query_params.get("token")
     mock_id = query_params.get("mock_user")
+    mock_key = query_params.get("mock_key")  # 测试后门密钥
     
     # 认证用户
-    user_info = authenticate_user(token=token, mock_id=mock_id)
+    user_info = authenticate_user(token=token, mock_id=mock_id, mock_key=mock_key)
     
     if user_info:
         st.session_state["current_user"] = user_info
         log.info("user_authenticated | user_id={}", user_info.user_id)
         
-        # 登录成功后，清除 URL 中的 token 参数（安全考虑）
-        if token:
-            # 保留其他参数，只移除 token
-            new_params = {k: v for k, v in query_params.items() if k != "token"}
+        # 登录成功后，清除 URL 中的敏感参数（安全考虑）
+        sensitive_params = {"token", "mock_key"}
+        if any(p in query_params for p in sensitive_params):
+            new_params = {k: v for k, v in query_params.items() if k not in sensitive_params}
             st.query_params.clear()
             for k, v in new_params.items():
                 st.query_params[k] = v
