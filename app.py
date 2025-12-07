@@ -92,7 +92,7 @@ def ensure_user_exists(user_info: UserInfo) -> dict:
 
 
 # -------- Page Config --------
-st.set_page_config(page_title="HireStream Match — 简历与JD智能匹配", page_icon="🧲", layout="centered")
+st.set_page_config(page_title="HireStream Match — 简历与JD智能匹配", page_icon="static/site-logo.png", layout="centered")
 
 
 # -------- 用户状态检查 --------
