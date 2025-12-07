@@ -405,3 +405,47 @@ async def reset_user_password(
             message=f"密码已重置，请在官网后台更新",
             new_password=new_password
         )
+
+
+class DeleteUserResponse(BaseModel):
+    """删除用户响应"""
+    success: bool
+    message: str
+
+
+@admin_app.delete("/api/admin/users/{user_id}", response_model=DeleteUserResponse)
+async def delete_user(
+    user_id: str,
+    admin: str = Depends(verify_admin_token)
+):
+    """删除用户及其所有相关数据"""
+    from models import UsageRecord
+    
+    with get_db_session() as db:
+        user = db.query(User).filter(User.user_id == user_id).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 记录用户信息用于日志
+        nickname = user.nickname or user_id
+        
+        # 删除用户的使用记录
+        usage_count = db.query(UsageRecord).filter(UsageRecord.user_id == user_id).delete()
+        
+        # 删除用户的交易记录
+        tx_count = db.query(Transaction).filter(Transaction.user_id == user_id).delete()
+        
+        # 删除用户
+        db.delete(user)
+        db.commit()
+        
+        log.info(
+            "user_deleted | user_id={} | nickname={} | usage_records={} | transactions={} | admin={}",
+            user_id, nickname, usage_count, tx_count, admin
+        )
+        
+        return DeleteUserResponse(
+            success=True,
+            message=f"用户 {nickname} 已删除，同时清理了 {usage_count} 条使用记录和 {tx_count} 条交易记录"
+        )
