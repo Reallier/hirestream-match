@@ -50,6 +50,22 @@ def get_current_user() -> UserInfo | None:
     token = query_params.get("token")
     mock_id = query_params.get("mock_user")
     
+    # 如果 URL 中没有 token，尝试从 Cookie 读取 (跨子域共享的 auth_token)
+    if not token:
+        try:
+            from streamlit.web.server.websocket_headers import _get_websocket_headers
+            headers = _get_websocket_headers()
+            if headers:
+                cookies = headers.get("Cookie", "")
+                for item in cookies.split(";"):
+                    item = item.strip()
+                    if item.startswith("auth_token="):
+                        token = item.split("=", 1)[1]
+                        log.info("token_from_cookie | found")
+                        break
+        except Exception as e:
+            log.warning("cookie_read_failed | error={}", str(e))
+    
     # 认证用户
     user_info = authenticate_user(token=token, mock_id=mock_id)
     
