@@ -224,9 +224,8 @@ async def recharge_user(
             user_id=user_id,
             type="admin_recharge",
             amount=request.amount,
-            balance_before=old_balance,
             balance_after=user.balance,
-            description=request.remark or f"管理员充值 (by {admin})",
+            remark=request.remark or f"管理员充值 (by {admin})",
             created_at=datetime.utcnow()
         )
         db.add(transaction)
