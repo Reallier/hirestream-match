@@ -51,14 +51,22 @@ def verify_jwt_token(token: str) -> Optional[UserInfo]:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         
+        # 支持多种用户 ID 格式：
+        # 1. user_id: 官网新版 JWT 格式 (intj_xxx)
+        # 2. sub: 标准 JWT 格式
+        # 3. id: 官网原有格式（数字），需要转换为 intj_xxx
         user_id = payload.get("user_id") or payload.get("sub")
+        if not user_id and payload.get("id"):
+            # 兼容官网原有格式：数字 id 转换为 intj_xxx
+            user_id = f"intj_{payload.get('id')}"
+        
         if not user_id:
             log.warning("jwt_verify_failed | reason=missing_user_id")
             return None
         
         return UserInfo(
             user_id=str(user_id),
-            nickname=payload.get("nickname", payload.get("name", f"用户{user_id[:6]}")),
+            nickname=payload.get("nickname", payload.get("name", f"用户{str(user_id)[:6]}")),
             avatar_url=payload.get("avatar_url", payload.get("avatar"))
         )
     except jwt.ExpiredSignatureError:

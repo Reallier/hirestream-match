@@ -56,6 +56,14 @@ def get_current_user() -> UserInfo | None:
     if user_info:
         st.session_state["current_user"] = user_info
         log.info("user_authenticated | user_id={}", user_info.user_id)
+        
+        # 登录成功后，清除 URL 中的 token 参数（安全考虑）
+        if token:
+            # 保留其他参数，只移除 token
+            new_params = {k: v for k, v in query_params.items() if k != "token"}
+            st.query_params.clear()
+            for k, v in new_params.items():
+                st.query_params[k] = v
     
     return user_info
 
@@ -82,10 +90,13 @@ if not current_user:
     st.markdown("""
     ### 如何使用
     
-    1. 从官网登录后访问本服务
-    2. 或在开发模式下，访问 `?mock_user=test_user_001` 进行测试
+    1. 请先在官网完成登录
+    2. 登录后，从官网点击进入本服务即可自动登录
     
-    [返回官网登录](#)
+    👉 [前往官网登录](https://intjtech.reallier.top)
+    
+    ---
+    *开发模式：访问 `?mock_user=test_user_001` 进行测试*
     """)
     st.stop()
 
