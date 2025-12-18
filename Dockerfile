@@ -1,6 +1,13 @@
 FROM python:3.13-slim
 WORKDIR /app
 
+# 安装构建工具（编译 C 扩展需要）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    libc-dev \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install -U uv
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev

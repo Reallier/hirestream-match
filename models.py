@@ -3,6 +3,7 @@
 数据库模型定义
 
 包含用户、使用记录、交易流水三个核心模型
+用户表与官网共享（统一 users 表）
 """
 
 from datetime import datetime
@@ -12,17 +13,23 @@ from database import Base
 
 
 class User(Base):
-    """用户模型"""
-    __tablename__ = "hm_users"
+    """用户模型（与官网共享）"""
+    __tablename__ = "users"
     
-    # 主键：来自官网的用户 ID
-    user_id = Column(String(64), primary_key=True, index=True)
+    # 主键：与官网统一的自增 ID
+    id = Column(Integer, primary_key=True, autoincrement=True)
     
-    # 用户信息
-    nickname = Column(String(100), nullable=True, comment="用户昵称")
-    avatar_url = Column(Text, nullable=True, comment="头像URL")
+    # 官网用户信息
+    email = Column(String(255), unique=True, nullable=True)
+    username = Column(String(100), unique=True, nullable=True)
+    password = Column(String(255), nullable=True)
+    name = Column(String(100), nullable=True, comment="用户昵称")
+    avatar = Column(Text, nullable=True, comment="头像URL")
+    openid = Column(String(255), unique=True, nullable=True)
+    unionid = Column(String(255), unique=True, nullable=True)
+    role = Column(String(20), default="user")
     
-    # 账户信息
+    # 计费信息
     balance = Column(Numeric(12, 6), default=0.0, nullable=False, comment="账户余额（元）")
     free_quota = Column(Numeric(12, 6), default=0.0, nullable=False, comment="剩余免费额度（元）")
     
@@ -35,12 +42,27 @@ class User(Base):
     transactions = relationship("Transaction", back_populates="user", lazy="dynamic")
     
     def __repr__(self):
-        return f"<User(user_id={self.user_id}, nickname={self.nickname}, balance={self.balance})>"
+        return f"<User(id={self.id}, name={self.name}, balance={self.balance})>"
+    
+    @property
+    def user_id(self) -> int:
+        """兼容旧代码的 user_id 属性"""
+        return self.id
+    
+    @property
+    def nickname(self) -> str:
+        """兼容旧代码的 nickname 属性"""
+        return self.name or f"用户{self.id}"
+    
+    @property
+    def avatar_url(self) -> str:
+        """兼容旧代码的 avatar_url 属性"""
+        return self.avatar
     
     @property
     def total_available(self) -> float:
         """可用总额 = 余额 + 免费额度"""
-        return float(self.balance) + float(self.free_quota)
+        return float(self.balance or 0) + float(self.free_quota or 0)
 
 
 class UsageRecord(Base):
@@ -50,8 +72,8 @@ class UsageRecord(Base):
     # 主键
     id = Column(Integer, primary_key=True, autoincrement=True)
     
-    # 用户关联
-    user_id = Column(String(64), ForeignKey("users.user_id"), nullable=False, index=True)
+    # 用户关联（现在是 Integer）
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # 请求信息
     request_id = Column(String(64), nullable=False, unique=True, index=True, comment="请求唯一ID，用于幂等")
@@ -73,7 +95,7 @@ class UsageRecord(Base):
     
     # 索引：按用户+时间查询
     __table_args__ = (
-        Index("idx_user_created", "user_id", "created_at"),
+        Index("idx_usage_user_created", "user_id", "created_at"),
     )
     
     def __repr__(self):
@@ -91,8 +113,8 @@ class Transaction(Base):
     # 主键
     id = Column(Integer, primary_key=True, autoincrement=True)
     
-    # 用户关联
-    user_id = Column(String(64), ForeignKey("users.user_id"), nullable=False, index=True)
+    # 用户关联（现在是 Integer）
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # 交易信息
     type = Column(String(20), nullable=False, comment="类型：recharge/deduct/refund/free_grant")

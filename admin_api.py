@@ -64,7 +64,7 @@ class LoginResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
-    user_id: str
+    user_id: int
     nickname: str
     avatar_url: Optional[str]
     balance: float
@@ -183,7 +183,7 @@ async def get_users(
         
         if search:
             query = query.filter(
-                (User.user_id.contains(search)) | 
+                (User.id.contains(search)) | 
                 (User.nickname.contains(search))
             )
         
@@ -208,10 +208,10 @@ async def get_users(
 
 
 @admin_app.get("/api/admin/users/{user_id}", response_model=UserResponse)
-async def get_user(user_id: str, admin: str = Depends(verify_admin_token)):
+async def get_user(user_id: int, admin: str = Depends(verify_admin_token)):
     """获取用户详情"""
     with get_db_session() as db:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.id == user_id).first()
         
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -230,7 +230,7 @@ async def get_user(user_id: str, admin: str = Depends(verify_admin_token)):
 
 @admin_app.post("/api/admin/users/{user_id}/recharge", response_model=RechargeResponse)
 async def recharge_user(
-    user_id: str, 
+    user_id: int, 
     request: RechargeRequest,
     admin: str = Depends(verify_admin_token)
 ):
@@ -239,7 +239,7 @@ async def recharge_user(
         raise HTTPException(status_code=400, detail="充值金额必须大于 0")
     
     with get_db_session() as db:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.id == user_id).first()
         
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -325,7 +325,7 @@ async def create_user(
     
     with get_db_session() as db:
         # 检查用户 ID 是否已存在
-        existing = db.query(User).filter(User.user_id == user_id).first()
+        existing = db.query(User).filter(User.id == user_id).first()
         if existing:
             user_id = generate_user_id()  # 重新生成
         
@@ -381,14 +381,14 @@ async def create_user(
 
 @admin_app.post("/api/admin/users/{user_id}/reset-password", response_model=ResetPasswordResponse)
 async def reset_user_password(
-    user_id: str,
+    user_id: int,
     admin: str = Depends(verify_admin_token)
 ):
     """重置用户密码（随机生成新密码）"""
     new_password = generate_password()
     
     with get_db_session() as db:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.id == user_id).first()
         
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
@@ -417,14 +417,14 @@ class DeleteUserResponse(BaseModel):
 
 @admin_app.delete("/api/admin/users/{user_id}", response_model=DeleteUserResponse)
 async def delete_user(
-    user_id: str,
+    user_id: int,
     admin: str = Depends(verify_admin_token)
 ):
     """删除用户及其所有相关数据"""
     from models import UsageRecord
     
     with get_db_session() as db:
-        user = db.query(User).filter(User.user_id == user_id).first()
+        user = db.query(User).filter(User.id == user_id).first()
         
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")

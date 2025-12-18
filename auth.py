@@ -26,7 +26,7 @@ USER_AUTH_MODE = os.getenv("USER_AUTH_MODE", "mock")
 @dataclass
 class UserInfo:
     """用户信息"""
-    user_id: str
+    user_id: int  # 统一使用 Integer ID
     nickname: str
     avatar_url: Optional[str] = None
     
@@ -51,22 +51,25 @@ def verify_jwt_token(token: str) -> Optional[UserInfo]:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         
-        # 支持多种用户 ID 格式：
-        # 1. user_id: 官网新版 JWT 格式 (intj_xxx)
-        # 2. sub: 标准 JWT 格式
-        # 3. id: 官网原有格式（数字），需要转换为 intj_xxx
-        user_id = payload.get("user_id") or payload.get("sub")
-        if not user_id and payload.get("id"):
-            # 兼容官网原有格式：数字 id 转换为 intj_xxx
-            user_id = f"intj_{payload.get('id')}"
+        # 统一使用 Integer user_id
+        # 优先使用 id（官网格式），支持 user_id 字段（兼容旧格式 intj_X）
+        user_id = payload.get("id")
+        if not user_id:
+            # 兼容旧格式：从 intj_X 或 user_id 提取数字
+            user_id_str = payload.get("user_id") or payload.get("sub")
+            if user_id_str:
+                if isinstance(user_id_str, str) and user_id_str.startswith("intj_"):
+                    user_id = int(user_id_str.replace("intj_", ""))
+                else:
+                    user_id = int(user_id_str) if str(user_id_str).isdigit() else None
         
         if not user_id:
             log.warning("jwt_verify_failed | reason=missing_user_id")
             return None
         
         return UserInfo(
-            user_id=str(user_id),
-            nickname=payload.get("nickname", payload.get("name", f"用户{str(user_id)[:6]}")),
+            user_id=int(user_id),
+            nickname=payload.get("nickname", payload.get("name", f"用户{user_id}")),
             avatar_url=payload.get("avatar_url", payload.get("avatar"))
         )
     except jwt.ExpiredSignatureError:
@@ -82,15 +85,20 @@ def get_mock_user(mock_id: Optional[str] = None) -> UserInfo:
     获取 Mock 用户（开发测试用）
     
     Args:
-        mock_id: 可选的 mock 用户 ID，默认使用固定 ID
+        mock_id: 可选的 mock 用户 ID，默认使用 id=1
         
     Returns:
         Mock 用户信息
     """
-    user_id = mock_id or "mock_user_001"
+    # 支持数字或 "test_user_001" 等格式
+    if mock_id and mock_id.isdigit():
+        user_id = int(mock_id)
+    else:
+        user_id = 1  # 默认使用 id=1
+    
     return UserInfo(
         user_id=user_id,
-        nickname=f"测试用户 ({user_id[:8]})",
+        nickname=f"测试用户 ({user_id})",
         avatar_url=None
     )
 

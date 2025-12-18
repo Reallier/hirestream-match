@@ -64,22 +64,22 @@ class UserService:
         Returns:
             User 模型实例
         """
-        user = self.db.query(User).filter(User.user_id == user_info.user_id).first()
+        user = self.db.query(User).filter(User.id == user_info.user_id).first()
         
         if user:
             # 更新用户信息（如果有变化）
-            if user_info.nickname and user.nickname != user_info.nickname:
-                user.nickname = user_info.nickname
-            if user_info.avatar_url and user.avatar_url != user_info.avatar_url:
-                user.avatar_url = user_info.avatar_url
+            if user_info.nickname and user.name != user_info.nickname:
+                user.name = user_info.nickname
+            if user_info.avatar_url and user.avatar != user_info.avatar_url:
+                user.avatar = user_info.avatar_url
             user.updated_at = datetime.utcnow()
-            log.info("user_updated | user_id={}", user.user_id)
+            log.info("user_updated | user_id={}", user.id)
         else:
-            # 创建新用户
+            # 创建新用户（注意：正常情况下用户应该在官网已创建）
             user = User(
-                user_id=user_info.user_id,
-                nickname=user_info.nickname,
-                avatar_url=user_info.avatar_url,
+                id=user_info.user_id,
+                name=user_info.nickname,
+                avatar=user_info.avatar_url,
                 balance=0.0,
                 free_quota=DEFAULT_FREE_QUOTA,
                 created_at=datetime.utcnow(),
@@ -93,23 +93,23 @@ class UserService:
                     user_id=user_info.user_id,
                     type="free_grant",
                     amount=DEFAULT_FREE_QUOTA,
-                    balance_after=0.0,  # 余额不变
+                    balance_after=0.0,
                     reference_id=None,
                     remark=f"新用户免费额度 ¥{DEFAULT_FREE_QUOTA}",
                     created_at=datetime.utcnow()
                 )
                 self.db.add(grant_tx)
             
-            log.info("user_created | user_id={} | free_quota={}", user.user_id, DEFAULT_FREE_QUOTA)
+            log.info("user_created | user_id={} | free_quota={}", user.id, DEFAULT_FREE_QUOTA)
         
         self.db.commit()
         return user
     
-    def get_user(self, user_id: str) -> Optional[User]:
+    def get_user(self, user_id: int) -> Optional[User]:
         """获取用户"""
-        return self.db.query(User).filter(User.user_id == user_id).first()
+        return self.db.query(User).filter(User.id == user_id).first()
     
-    def check_balance(self, user_id: str, estimated_cost: float = 0.0) -> BalanceCheckResult:
+    def check_balance(self, user_id: int, estimated_cost: float = 0.0) -> BalanceCheckResult:
         """
         检查用户余额是否足够
         
@@ -151,7 +151,7 @@ class UserService:
     
     def record_usage(
         self,
-        user_id: str,
+        user_id: int,
         request_id: str,
         operation: str,
         model: str,
@@ -198,7 +198,7 @@ class UserService:
         
         return record
     
-    def deduct_balance(self, user_id: str, cost: float, reference_id: str, remark: str = "") -> DeductResult:
+    def deduct_balance(self, user_id: int, cost: float, reference_id: str, remark: str = "") -> DeductResult:
         """
         扣除余额
         
@@ -284,7 +284,7 @@ class UserService:
             message="扣费成功"
         )
     
-    def add_balance(self, user_id: str, amount: float, reference_id: str, remark: str = "") -> bool:
+    def add_balance(self, user_id: int, amount: float, reference_id: str, remark: str = "") -> bool:
         """
         充值余额
         
@@ -325,7 +325,7 @@ class UserService:
         
         return True
     
-    def get_user_summary(self, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_user_summary(self, user_id: int) -> Optional[Dict[str, Any]]:
         """
         获取用户概览信息
         
@@ -376,7 +376,7 @@ class UserService:
             "created_at": user.created_at.isoformat() if user.created_at else None
         }
     
-    def get_recent_usage(self, user_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_recent_usage(self, user_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """
         获取最近的使用记录
         
