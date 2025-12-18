@@ -117,6 +117,73 @@ if not current_user:
 user_summary = ensure_user_exists(current_user)
 
 
+# -------- 数据存储同意检查 --------
+def check_and_show_consent_dialog():
+    """检查用户是否已确认数据存储同意，未确认则显示弹窗"""
+    from privacy_policy import CONSENT_DIALOG_TITLE, CONSENT_DIALOG_CONTENT
+    from database import get_db_session
+    from models import User
+    from datetime import datetime
+    
+    # 检查 session 是否已处理过
+    if "consent_checked" in st.session_state:
+        return st.session_state.get("consent_data_storage")
+    
+    # 从数据库获取用户同意状态
+    with get_db_session() as db:
+        user = db.query(User).filter(User.id == current_user.user_id).first()
+        if user and user.consent_data_storage is not None:
+            st.session_state["consent_checked"] = True
+            st.session_state["consent_data_storage"] = user.consent_data_storage
+            return user.consent_data_storage
+    
+    # 用户尚未确认，显示弹窗
+    st.session_state["show_consent_dialog"] = True
+    return None
+
+def save_user_consent(consent: bool):
+    """保存用户同意状态到数据库"""
+    from database import get_db_session
+    from models import User
+    from datetime import datetime
+    
+    with get_db_session() as db:
+        user = db.query(User).filter(User.id == current_user.user_id).first()
+        if user:
+            user.consent_data_storage = consent
+            user.consent_updated_at = datetime.utcnow()
+            db.commit()
+    
+    st.session_state["consent_checked"] = True
+    st.session_state["consent_data_storage"] = consent
+
+# 检查同意状态
+consent_status = check_and_show_consent_dialog()
+
+# 显示同意弹窗
+if st.session_state.get("show_consent_dialog"):
+    from privacy_policy import CONSENT_DIALOG_TITLE, CONSENT_DIALOG_CONTENT, CONSENT_AGREE_BUTTON, CONSENT_DECLINE_BUTTON
+    
+    st.markdown("---")
+    st.subheader(CONSENT_DIALOG_TITLE)
+    st.markdown(CONSENT_DIALOG_CONTENT)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button(CONSENT_AGREE_BUTTON, type="primary", use_container_width=True):
+            save_user_consent(True)
+            st.session_state["show_consent_dialog"] = False
+            st.rerun()
+    with col2:
+        if st.button(CONSENT_DECLINE_BUTTON, use_container_width=True):
+            save_user_consent(False)
+            st.session_state["show_consent_dialog"] = False
+            st.rerun()
+    
+    st.markdown("---")
+    st.info("💡 您可以随时在设置中更改此选项")
+    st.stop()
+
 # -------- 侧边栏：用户信息 --------
 with st.sidebar:
     st.markdown("### 👤 用户信息")
@@ -336,6 +403,28 @@ with placeholder:  # 在该容器中绘制内容
                         if deduct_result.success:
                             log.info("deduct_success | user_id={} | cost={} | balance_after={}",
                                      current_user.user_id, total_cost, deduct_result.balance_after)
+                            
+                            # 如果用户同意存储数据，保存匹配记录
+                            if st.session_state.get("consent_data_storage"):
+                                from models import MatchRecord
+                                try:
+                                    match_record = MatchRecord(
+                                        user_id=current_user.user_id,
+                                        jd_text=jd_text.strip(),
+                                        resume_text=resume_text.strip(),
+                                        resume_filename=uploaded_file.name if uploaded_file else None,
+                                        match_score=score,
+                                        report_json=result,
+                                        prompt_tokens=analysis_prompt,
+                                        completion_tokens=analysis_completion,
+                                        cost=total_cost
+                                    )
+                                    service.db.add(match_record)
+                                    service.db.commit()
+                                    log.info("match_record_saved | user_id={} | score={}", 
+                                             current_user.user_id, score)
+                                except Exception as e:
+                                    log.warning("match_record_save_failed | error={}", str(e))
                         else:
                             log.warning("deduct_failed | user_id={} | message={}",
                                         current_user.user_id, deduct_result.message)

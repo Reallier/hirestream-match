@@ -7,7 +7,8 @@
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, Numeric, DateTime, Text, ForeignKey, Index
+from sqlalchemy import Column, String, Integer, Numeric, DateTime, Text, ForeignKey, Index, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -33,6 +34,10 @@ class User(Base):
     balance = Column(Numeric(12, 6), default=0.0, nullable=False, comment="账户余额（元）")
     free_quota = Column(Numeric(12, 6), default=0.0, nullable=False, comment="剩余免费额度（元）")
     
+    # 数据存储同意
+    consent_data_storage = Column(Boolean, nullable=True, comment="同意存储简历/JD数据")
+    consent_updated_at = Column(DateTime, nullable=True, comment="同意更新时间")
+    
     # 时间戳
     created_at = Column(DateTime, default=datetime.utcnow, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, comment="更新时间")
@@ -40,6 +45,7 @@ class User(Base):
     # 关联
     usage_records = relationship("UsageRecord", back_populates="user", lazy="dynamic")
     transactions = relationship("Transaction", back_populates="user", lazy="dynamic")
+    match_records = relationship("MatchRecord", back_populates="user", lazy="dynamic")
     
     def __repr__(self):
         return f"<User(id={self.id}, name={self.name}, balance={self.balance})>"
@@ -138,3 +144,38 @@ class Transaction(Base):
     
     def __repr__(self):
         return f"<Transaction(id={self.id}, user_id={self.user_id}, type={self.type}, amount={self.amount})>"
+
+
+class MatchRecord(Base):
+    """匹配记录模型 - 存储用户同意后的简历匹配数据"""
+    __tablename__ = "hm_match_records"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # 输入内容
+    jd_text = Column(Text, nullable=False, comment="职位描述")
+    resume_text = Column(Text, nullable=False, comment="简历文本")
+    resume_filename = Column(String(255), nullable=True, comment="简历文件名")
+    
+    # 输出结果
+    match_score = Column(Integer, nullable=True, comment="匹配分数 0-100")
+    report_json = Column(JSONB, nullable=True, comment="完整报告 JSON")
+    
+    # Token 用量
+    prompt_tokens = Column(Integer, default=0)
+    completion_tokens = Column(Integer, default=0)
+    cost = Column(Numeric(12, 6), default=0)
+    
+    # 时间
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 关联
+    user = relationship("User", back_populates="match_records")
+    
+    __table_args__ = (
+        Index("idx_match_records_user", "user_id", "created_at"),
+    )
+    
+    def __repr__(self):
+        return f"<MatchRecord(id={self.id}, user_id={self.user_id}, score={self.match_score})>"
