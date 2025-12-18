@@ -38,13 +38,15 @@ admin_app = FastAPI(
     redoc_url=None
 )
 
-# CORS 配置
+# CORS 配置 - 从环境变量读取允许的域名
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "https://intjtech.reallier.top").split(",")
+
 admin_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生产环境应限制为官网域名
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 
