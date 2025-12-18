@@ -100,7 +100,9 @@ hirestream-match/
 │   ├── modules/         # 模块文档
 │   └── roadmap/         # 路线规划
 │
-└── data/                 # 数据目录（SQLite）
+├── TalentAI/             # 🧑‍💼 人才库子系统（共享 PostgreSQL）
+│
+└── .env.example          # 环境变量配置示例
 ```
 
 ---
@@ -130,14 +132,25 @@ hirestream-match/
 DASHSCOPE_API_KEY=your-api-key
 
 # 模型配置
-QWEN_MODEL=qwen3-max
+QWEN_MODEL=qwen-max-2025-01-25
 OCR_MODEL=qwen-vl-ocr-2025-11-20
 
 # 用户模块
 USER_AUTH_MODE=mock              # mock / jwt
 DEFAULT_FREE_QUOTA=1.0           # 新用户免费额度（元）
-DATABASE_URL=sqlite:///./data/hirestream.db
+
+# 数据库（与 TalentAI 共享 PostgreSQL）
+# 本地开发: postgresql://talentai:talentai123@localhost:5432/talentai
+# Docker:   postgresql://talentai:talentai123@talentai-db:5432/talentai
+DATABASE_URL=postgresql://talentai:talentai123@talentai-db:5432/talentai
+
+# JWT（必须与官网 INTJTech_04 保持一致）
+JWT_SECRET=your-jwt-secret
+JWT_ALGORITHM=HS256
 ```
+
+> ⚠️ **重要**: 计费数据现在存储在 PostgreSQL 中，与 TalentAI 人才库共享同一数据库实例。
+> 表名使用 `hm_` 前缀：`hm_users`, `hm_usage_records`, `hm_transactions`
 
 ---
 

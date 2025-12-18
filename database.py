@@ -2,30 +2,38 @@
 """
 数据库连接和初始化模块
 
-支持 SQLite（开发）和 PostgreSQL（生产）
+默认使用 PostgreSQL（与 TalentAI 共享 talentai-db）
+也兼容 SQLite 用于本地开发
 """
 
 import os
 from contextlib import contextmanager
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# 数据库 URL，默认使用 SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/hirestream.db")
+# 数据库 URL，默认使用 PostgreSQL（与 TalentAI 共享）
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://talentai:talentai123@localhost:5432/talentai")
 
 # 创建引擎
-# SQLite 需要 check_same_thread=False 才能在多线程环境使用
 if DATABASE_URL.startswith("sqlite"):
+    # SQLite 需要 check_same_thread=False 才能在多线程环境使用
     engine = create_engine(
         DATABASE_URL,
         connect_args={"check_same_thread": False},
-        echo=False  # 设为 True 可以看到 SQL 语句
+        echo=False
     )
 else:
-    engine = create_engine(DATABASE_URL, echo=False)
+    # PostgreSQL - 添加连接池配置以支持高并发
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_size=10,
+        max_overflow=20,
+        echo=False
+    )
 
 # 创建 Session 工厂
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -36,22 +44,29 @@ Base = declarative_base()
 
 def init_db():
     """
-    初始化数据库，创建所有表
+    初始化数据库
     
-    需要先 import models 以注册所有模型
+    - SQLite: 自动创建表（开发用）
+    - PostgreSQL: 仅验证连接，表由 init.sql 创建
     """
-    # 确保 data 目录存在
-    if DATABASE_URL.startswith("sqlite"):
-        import pathlib
-        db_path = DATABASE_URL.replace("sqlite:///", "")
-        pathlib.Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    
     # 导入模型以注册
     from models import User, UsageRecord, Transaction  # noqa: F401
     
-    # 创建所有表
-    Base.metadata.create_all(bind=engine)
-    print(f"✅ 数据库初始化完成: {DATABASE_URL}")
+    if DATABASE_URL.startswith("sqlite"):
+        # SQLite: 确保 data 目录存在并创建表
+        import pathlib
+        db_path = DATABASE_URL.replace("sqlite:///", "")
+        pathlib.Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        Base.metadata.create_all(bind=engine)
+        print(f"✅ SQLite 数据库初始化完成: {DATABASE_URL}")
+    else:
+        # PostgreSQL: 验证连接即可，表由 init.sql 管理
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print(f"✅ PostgreSQL 连接成功: {DATABASE_URL.split('@')[-1]}")
+        except Exception as e:
+            print(f"❌ PostgreSQL 连接失败: {e}")
 
 
 @contextmanager

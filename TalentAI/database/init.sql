@@ -219,3 +219,60 @@ COMMENT ON TABLE candidate_index IS '检索索引表（全文+向量）';
 COMMENT ON TABLE merge_lineage IS '候选人合并谱系追踪表';
 COMMENT ON TABLE audit_log IS '操作审计日志表';
 COMMENT ON TABLE skill_recency IS '技能最后使用时间表（用于新鲜度评分）';
+
+
+-- =============================================================================
+-- HireStream Match 模块表（计费系统）
+-- 表名使用 hm_ 前缀以区分于 TalentAI 人才库表
+-- =============================================================================
+
+-- HM 用户表（与官网用户同步）
+CREATE TABLE IF NOT EXISTS hm_users (
+    user_id VARCHAR(64) PRIMARY KEY,
+    nickname VARCHAR(100),
+    avatar_url TEXT,
+    balance NUMERIC(12, 6) DEFAULT 0.0 NOT NULL,
+    free_quota NUMERIC(12, 6) DEFAULT 0.0 NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HM 使用记录表
+CREATE TABLE IF NOT EXISTS hm_usage_records (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES hm_users(user_id) ON DELETE CASCADE,
+    request_id VARCHAR(64) NOT NULL UNIQUE,
+    operation VARCHAR(20) NOT NULL,
+    model VARCHAR(50) NOT NULL,
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    cost NUMERIC(12, 6) DEFAULT 0.0 NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HM 交易流水表
+CREATE TABLE IF NOT EXISTS hm_transactions (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL REFERENCES hm_users(user_id) ON DELETE CASCADE,
+    type VARCHAR(20) NOT NULL,
+    amount NUMERIC(12, 6) NOT NULL,
+    balance_after NUMERIC(12, 6) NOT NULL,
+    reference_id VARCHAR(64),
+    remark TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- HM 索引
+CREATE INDEX IF NOT EXISTS idx_hm_users_updated_at ON hm_users(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_hm_usage_user_created ON hm_usage_records(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_hm_trans_user_created ON hm_transactions(user_id, created_at);
+
+-- HM 用户表更新时间戳触发器
+CREATE TRIGGER update_hm_users_updated_at
+    BEFORE UPDATE ON hm_users
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE hm_users IS 'HireStream Match 用户表（与官网同步）';
+COMMENT ON TABLE hm_usage_records IS 'HireStream Match 使用记录表';
+COMMENT ON TABLE hm_transactions IS 'HireStream Match 交易流水表';
