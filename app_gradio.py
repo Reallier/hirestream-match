@@ -1,34 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-HireStream Match - Gradio 版本
+HireStream Match - Gradio 版本 v2
 
-基于 Gradio 的现代化简历匹配工具界面
+专业化 UI 设计：
+- 右上角头像下拉菜单
+- 两列布局（JD + 简历）
+- 使用记录页面
+- 设置页面（深浅主题）
 """
 
 import gradio as gr
 import time
 import os
-from datetime import datetime
+import json
+from datetime import datetime, timedelta
 
 from log import logger as log
 from auth import verify_jwt_token, get_mock_user, UserInfo
 from user_service import UserService, get_user_service
 from match_engine import extract_text_from_upload, call_qwen_json
 from token_calculator import TokenCalculator
-from privacy_policy import PRIVACY_POLICY, CONSENT_DIALOG_CONTENT
+from privacy_policy import PRIVACY_POLICY
 from database import get_db_session, init_db
-from models import User, MatchRecord
+from models import User, MatchRecord, UsageRecord
 
 # 初始化数据库
 init_db()
 
 # ========== 配置 ==========
 QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen3-235b-a22b")
-USER_AUTH_MODE = os.getenv("USER_AUTH_MODE", "jwt")  # jwt / mock
-
-# 匹配分析的 system prompt
-SYSTEM_PROMPT = """你是专业的HR招聘专家，擅长分析简历与职位描述(JD)的匹配程度。
-请仔细分析候选人简历与目标职位的匹配情况，从多个维度给出专业评估。"""
+USER_AUTH_MODE = os.getenv("USER_AUTH_MODE", "jwt")
 
 USER_TEMPLATE = """## 职位描述 (JD)
 {job_description}
@@ -49,18 +50,15 @@ USER_TEMPLATE = """## 职位描述 (JD)
 
 # ========== 工具函数 ==========
 def generate_request_id():
-    """生成唯一请求ID"""
     import uuid
     return f"req_{uuid.uuid4().hex[:12]}"
 
 
 def get_user_from_token(token: str) -> UserInfo:
-    """从 token 获取用户信息"""
     if not token:
         if USER_AUTH_MODE == "mock":
             return get_mock_user()
         return None
-    
     user_info = verify_jwt_token(token)
     if not user_info and USER_AUTH_MODE == "mock":
         return get_mock_user()
@@ -68,7 +66,6 @@ def get_user_from_token(token: str) -> UserInfo:
 
 
 def ensure_user_exists(user_info: UserInfo):
-    """确保用户在数据库中存在"""
     service = get_user_service()
     try:
         service.get_or_create_user(user_info)
@@ -78,39 +75,306 @@ def ensure_user_exists(user_info: UserInfo):
 
 
 def check_user_consent(user_id: int) -> bool:
-    """检查用户是否同意数据存储"""
     with get_db_session() as db:
         user = db.query(User).filter(User.id == user_id).first()
         return user.consent_data_storage if user else None
 
 
-def save_user_consent(user_id: int, consent: bool):
-    """保存用户同意状态"""
+def get_usage_records(user_id: int, limit: int = 20):
+    """获取用户使用记录"""
     with get_db_session() as db:
-        user = db.query(User).filter(User.id == user_id).first()
-        if user:
-            user.consent_data_storage = consent
-            user.consent_updated_at = datetime.utcnow()
-            db.commit()
+        records = db.query(UsageRecord).filter(
+            UsageRecord.user_id == user_id
+        ).order_by(UsageRecord.created_at.desc()).limit(limit).all()
+        return [{
+            "time": r.created_at.strftime("%Y-%m-%d %H:%M"),
+            "operation": r.operation,
+            "model": r.model,
+            "cost": float(r.cost or 0)
+        } for r in records]
+
+
+def get_match_history(user_id: int, limit: int = 10):
+    """获取匹配历史"""
+    with get_db_session() as db:
+        records = db.query(MatchRecord).filter(
+            MatchRecord.user_id == user_id
+        ).order_by(MatchRecord.created_at.desc()).limit(limit).all()
+        return [{
+            "time": r.created_at.strftime("%Y-%m-%d %H:%M"),
+            "score": r.match_score,
+            "filename": r.resume_filename or "未命名",
+            "cost": float(r.cost or 0)
+        } for r in records]
+
+
+# ========== 自定义 CSS ==========
+LIGHT_THEME_CSS = """
+:root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-card: #ffffff;
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --border-color: #e2e8f0;
+    --accent-color: #6366f1;
+    --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+}
+"""
+
+DARK_THEME_CSS = """
+:root {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #1e293b;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border-color: #334155;
+    --accent-color: #818cf8;
+    --accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+}
+"""
+
+CUSTOM_CSS = """
+/* 基础样式 */
+.gradio-container {
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+    background: var(--bg-primary) !important;
+}
+
+/* 顶部导航 */
+.header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.header-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.header-logo span {
+    background: var(--accent-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* 用户菜单 */
+.user-menu {
+    position: relative;
+    display: inline-block;
+}
+
+.user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--border-color);
+    transition: all 0.2s;
+}
+
+.user-avatar:hover {
+    border-color: var(--accent-color);
+}
+
+.user-dropdown {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: 48px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 0;
+    min-width: 200px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+    z-index: 1000;
+}
+
+.user-menu:hover .user-dropdown {
+    display: block;
+}
+
+.dropdown-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dropdown-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 14px;
+}
+
+.dropdown-balance {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.dropdown-balance strong {
+    color: var(--accent-color);
+    font-size: 16px;
+}
+
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+    background: var(--bg-secondary);
+}
+
+/* 卡片 */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+}
+
+.card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 分析按钮 */
+.analyze-btn {
+    background: var(--accent-gradient) !important;
+    border: none !important;
+    color: white !important;
+    font-weight: 600 !important;
+    padding: 14px 32px !important;
+    font-size: 16px !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    transition: transform 0.2s, box-shadow 0.2s !important;
+}
+
+.analyze-btn:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(99, 102, 241, 0.3) !important;
+}
+
+/* 结果区域 */
+.result-score {
+    text-align: center;
+    padding: 24px;
+    background: var(--accent-gradient);
+    border-radius: 12px;
+    color: white;
+}
+
+.result-score .score-number {
+    font-size: 48px;
+    font-weight: 700;
+}
+
+.result-score .score-label {
+    font-size: 14px;
+    opacity: 0.9;
+}
+
+/* 三栏结果 */
+.result-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.result-column {
+    background: var(--bg-secondary);
+    border-radius: 10px;
+    padding: 16px;
+}
+
+.result-column h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-primary);
+}
+
+.result-column ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.result-column li {
+    font-size: 13px;
+    color: var(--text-secondary);
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.result-column li:last-child {
+    border-bottom: none;
+}
+
+/* 使用记录表格 */
+.usage-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.usage-table th, .usage-table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+}
+
+.usage-table th {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.usage-table td {
+    color: var(--text-primary);
+}
+"""
 
 
 # ========== 核心分析函数 ==========
 def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress()):
     """执行简历匹配分析"""
     
-    # 1. 验证用户
     user_info = get_user_from_token(token)
     if not user_info:
         return None, "❌ 请先登录", "", ""
     
-    # 确保用户存在
     user_summary = ensure_user_exists(user_info)
     
-    # 2. 检查余额
     if user_summary["total_available"] <= 0:
         return None, "❌ 余额不足，请充值后使用", "", ""
     
-    # 3. 验证输入
     if not jd_text or not jd_text.strip():
         return None, "⚠️ 请输入职位描述", "", ""
     
@@ -119,18 +383,16 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
     
     progress(0.1, desc="正在解析简历...")
     
-    # 4. 提取简历文本
     try:
         resume_text, ocr_usage = extract_text_from_upload(resume_file.name)
         if not resume_text:
-            return None, "❌ 简历解析失败，请检查文件格式", "", ""
+            return None, "❌ 简历解析失败", "", ""
     except Exception as e:
         log.exception("resume_parse_failed")
         return None, f"❌ 简历解析错误: {str(e)}", "", ""
     
     progress(0.3, desc="正在分析匹配度...")
     
-    # 5. 调用 AI 分析
     service = get_user_service()
     try:
         request_id = generate_request_id()
@@ -150,7 +412,6 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
         
         progress(0.7, desc="正在记录使用量...")
         
-        # 记录使用量
         service.record_usage(
             user_id=user_info.user_id,
             request_id=request_id,
@@ -161,7 +422,6 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
             cost=analysis_cost
         )
         
-        # OCR 使用量
         total_cost = analysis_cost
         if ocr_usage:
             ocr_request_id = generate_request_id()
@@ -177,7 +437,6 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
             )
             total_cost += ocr_cost
         
-        # 扣费
         deduct_result = service.deduct_balance(
             user_id=user_info.user_id,
             cost=total_cost,
@@ -187,7 +446,6 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
         
         progress(0.9, desc="正在生成报告...")
         
-        # 如果用户同意，保存匹配记录
         if check_user_consent(user_info.user_id):
             try:
                 match_record = MatchRecord(
@@ -203,19 +461,39 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
                 )
                 service.db.add(match_record)
                 service.db.commit()
-                log.info("match_record_saved | user_id={} | score={}", user_info.user_id, score)
             except Exception as e:
                 log.warning("match_record_save_failed | error={}", str(e))
         
         ms = int((time.perf_counter() - t0) * 1000)
-        log.info("analysis_complete | score={} | ms={} | cost={}", score, ms, total_cost)
         
         # 格式化结果
-        score_display = f"## 🎯 匹配度: {score}%"
+        score_html = f"""
+        <div class="result-score">
+            <div class="score-number">{score}%</div>
+            <div class="score-label">匹配度</div>
+        </div>
+        """
         
-        strengths_md = "### ✅ 优势\n" + "\n".join([f"- {s}" for s in result.get("strengths", [])])
-        risks_md = "### ⚠️ 风险\n" + "\n".join([f"- {r}" for r in result.get("risks", [])])
-        suggestions_md = "### 💡 建议\n" + "\n".join([f"- {s}" for s in result.get("suggestions", [])])
+        strengths = result.get("strengths", [])
+        risks = result.get("risks", [])
+        suggestions = result.get("suggestions", [])
+        
+        result_html = f"""
+        <div class="result-grid">
+            <div class="result-column">
+                <h4>✅ 优势</h4>
+                <ul>{"".join([f'<li>{s}</li>' for s in strengths])}</ul>
+            </div>
+            <div class="result-column">
+                <h4>⚠️ 风险</h4>
+                <ul>{"".join([f'<li>{r}</li>' for r in risks])}</ul>
+            </div>
+            <div class="result-column">
+                <h4>💡 建议</h4>
+                <ul>{"".join([f'<li>{s}</li>' for s in suggestions])}</ul>
+            </div>
+        </div>
+        """
         
         detail_md = f"""
 ### 📋 详细分析
@@ -226,9 +504,7 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
 *本次分析消耗: ¥{total_cost:.4f} | 耗时: {ms}ms*
 """
         
-        full_report = f"{strengths_md}\n\n{risks_md}\n\n{suggestions_md}\n\n{detail_md}"
-        
-        return score, score_display, result.get("summary", ""), full_report
+        return score, score_html, result_html, detail_md
         
     except Exception as e:
         log.exception("analysis_failed")
@@ -237,214 +513,290 @@ def analyze_match(jd_text: str, resume_file, token: str, progress=gr.Progress())
         service.db.close()
 
 
-def get_user_info_display(token: str):
-    """获取用户信息显示"""
-    user_info = get_user_from_token(token)
+def render_header(user_info, user_summary):
+    """渲染顶部导航"""
     if not user_info:
-        return "未登录", "¥0.00", "¥0.00"
+        return """
+        <div class="header-bar">
+            <div class="header-logo">🧲 <span>HireStream Match</span></div>
+            <div style="color: var(--text-secondary);">未登录</div>
+        </div>
+        """
     
-    summary = ensure_user_exists(user_info)
-    return (
-        f"👤 {user_info.nickname}",
-        f"¥{summary['balance']:.2f}",
-        f"¥{summary['total_available']:.2f}"
-    )
+    avatar = user_info.avatar_url or f"https://api.dicebear.com/7.x/avataaars/svg?seed={user_info.user_id}"
+    
+    return f"""
+    <div class="header-bar">
+        <div class="header-logo">🧲 <span>HireStream Match</span></div>
+        <div class="user-menu">
+            <img src="{avatar}" alt="avatar" class="user-avatar" />
+            <div class="user-dropdown">
+                <div class="dropdown-header">
+                    <div class="dropdown-name">{user_info.nickname}</div>
+                    <div class="dropdown-balance">
+                        可用余额 <strong>¥{user_summary['total_available']:.2f}</strong>
+                    </div>
+                </div>
+                <div class="dropdown-item" onclick="document.querySelector('[data-tab-id=usage]')?.click()">
+                    📊 使用记录
+                </div>
+                <div class="dropdown-item" onclick="document.querySelector('[data-tab-id=settings]')?.click()">
+                    ⚙️ 设置
+                </div>
+                <div class="dropdown-item" onclick="window.location.href='https://intjtech.reallier.top'">
+                    🚪 返回官网
+                </div>
+            </div>
+        </div>
+    </div>
+    """
 
 
-# ========== 自定义 CSS ==========
-CUSTOM_CSS = """
-/* 全局样式 */
-.gradio-container {
-    max-width: 1200px !important;
-    margin: auto;
-}
-
-/* 标题 */
-.app-title {
-    text-align: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
-}
-
-/* 匹配分数 */
-.score-display {
-    text-align: center;
-    font-size: 3rem;
-    font-weight: bold;
-    padding: 20px;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-}
-
-/* 卡片样式 */
-.info-card {
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 12px;
-    padding: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-/* 按钮 */
-.primary-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-    border: none !important;
-    font-weight: 600 !important;
-}
-"""
+def render_usage_table(user_id: int):
+    """渲染使用记录"""
+    records = get_usage_records(user_id, 20)
+    if not records:
+        return "<p style='color: var(--text-secondary); text-align: center; padding: 40px;'>暂无使用记录</p>"
+    
+    rows = ""
+    for r in records:
+        rows += f"""
+        <tr>
+            <td>{r['time']}</td>
+            <td>{r['operation']}</td>
+            <td>{r['model']}</td>
+            <td>¥{r['cost']:.4f}</td>
+        </tr>
+        """
+    
+    return f"""
+    <table class="usage-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>操作</th>
+                <th>模型</th>
+                <th>费用</th>
+            </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+    </table>
+    """
 
 
-# ========== 构建 Gradio 界面 ==========
+def render_history_table(user_id: int):
+    """渲染匹配历史"""
+    records = get_match_history(user_id, 10)
+    if not records:
+        return "<p style='color: var(--text-secondary); text-align: center; padding: 40px;'>暂无匹配历史</p>"
+    
+    rows = ""
+    for r in records:
+        rows += f"""
+        <tr>
+            <td>{r['time']}</td>
+            <td>{r['filename']}</td>
+            <td><strong>{r['score']}%</strong></td>
+            <td>¥{r['cost']:.4f}</td>
+        </tr>
+        """
+    
+    return f"""
+    <table class="usage-table">
+        <thead>
+            <tr>
+                <th>时间</th>
+                <th>简历</th>
+                <th>匹配度</th>
+                <th>费用</th>
+            </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+    </table>
+    """
+
+
+# ========== 构建界面 ==========
 def create_app():
+    
     with gr.Blocks(
         title="HireStream Match - 简历智能匹配",
+        css=LIGHT_THEME_CSS + CUSTOM_CSS,
         theme=gr.themes.Soft(
-            primary_hue="purple",
-            secondary_hue="blue",
-            neutral_hue="slate",
-        ),
-        css=CUSTOM_CSS
+            primary_hue="indigo",
+            secondary_hue="purple",
+            neutral_hue="slate"
+        )
     ) as demo:
         
-        # Token 状态（从 URL 参数获取）
+        # 状态
         token_state = gr.State("")
+        user_info_state = gr.State(None)
+        user_summary_state = gr.State({})
         
-        # ===== 头部 =====
-        gr.HTML("""
-        <div style="text-align: center; padding: 20px 0;">
-            <h1 class="app-title">🧲 HireStream Match</h1>
-            <p style="color: #888; font-size: 1.1rem;">AI 驱动的简历与职位智能匹配分析</p>
-        </div>
-        """)
+        # 顶部导航
+        header_html = gr.HTML("")
         
-        with gr.Row():
-            # ===== 左侧：用户信息 =====
-            with gr.Column(scale=1):
-                gr.Markdown("### 👤 账户信息")
-                user_name = gr.Textbox(label="用户", value="未登录", interactive=False)
-                user_balance = gr.Textbox(label="余额", value="¥0.00", interactive=False)
-                user_available = gr.Textbox(label="可用", value="¥0.00", interactive=False)
+        # 标签页
+        with gr.Tabs() as tabs:
+            
+            # ===== 匹配分析页 =====
+            with gr.Tab("🧲 匹配分析", id="match"):
+                with gr.Row(equal_height=True):
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 📝 职位描述")
+                        jd_input = gr.Textbox(
+                            placeholder="请粘贴完整的职位描述 (JD)...\n\n包括：\n• 职位名称\n• 工作职责\n• 任职要求\n• 薪资福利",
+                            lines=15,
+                            max_lines=25,
+                            show_label=False,
+                            container=False
+                        )
+                    
+                    with gr.Column(scale=1):
+                        gr.Markdown("### 📄 简历上传")
+                        resume_upload = gr.File(
+                            label="",
+                            file_types=[".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx"],
+                            type="filepath"
+                        )
+                        gr.Markdown("*支持 PDF、图片、Word 格式，最大 10MB*")
                 
-                refresh_btn = gr.Button("🔄 刷新", size="sm")
+                analyze_btn = gr.Button(
+                    "🚀 开始匹配分析",
+                    variant="primary",
+                    size="lg",
+                    elem_classes=["analyze-btn"]
+                )
+                
+                gr.Markdown("---")
+                gr.Markdown("### 📊 匹配结果")
+                
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        score_output = gr.Slider(
+                            label="匹配度",
+                            minimum=0,
+                            maximum=100,
+                            value=0,
+                            interactive=False,
+                            visible=False
+                        )
+                        score_html = gr.HTML("")
+                    
+                with gr.Row():
+                    result_html = gr.HTML("")
+                
+                report_md = gr.Markdown("*请上传简历并输入 JD 后点击分析*")
             
-            # ===== 中间：输入区 =====
-            with gr.Column(scale=2):
-                gr.Markdown("### 📝 职位描述 (JD)")
-                jd_input = gr.Textbox(
-                    placeholder="请粘贴完整的职位描述...\n\n包括：职位名称、职责要求、任职资格、薪资福利等",
-                    lines=12,
-                    max_lines=20,
-                    show_label=False
-                )
+            # ===== 使用记录页 =====
+            with gr.Tab("📊 使用记录", id="usage"):
+                gr.Markdown("### 📊 使用记录")
+                usage_html = gr.HTML("<p style='text-align: center; color: #888;'>加载中...</p>")
+                refresh_usage_btn = gr.Button("🔄 刷新", size="sm")
+                
+                gr.Markdown("---")
+                gr.Markdown("### 📋 匹配历史")
+                history_html = gr.HTML("<p style='text-align: center; color: #888;'>加载中...</p>")
             
-            # ===== 右侧：上传区 =====
-            with gr.Column(scale=2):
-                gr.Markdown("### 📄 简历上传")
-                resume_upload = gr.File(
-                    label="上传简历",
-                    file_types=[".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx"],
-                    type="filepath"
-                )
-                gr.Markdown("*支持 PDF、图片、Word 格式*", elem_classes=["text-muted"])
-        
-        # ===== 分析按钮 =====
-        with gr.Row():
-            analyze_btn = gr.Button(
-                "🚀 开始匹配分析",
-                variant="primary",
-                size="lg",
-                elem_classes=["primary-btn"]
-            )
-        
-        # ===== 结果区 =====
-        gr.Markdown("---")
-        gr.Markdown("### 📊 匹配结果")
-        
-        with gr.Row():
-            with gr.Column(scale=1):
-                score_output = gr.Slider(
-                    label="匹配度",
-                    minimum=0,
-                    maximum=100,
-                    value=0,
-                    interactive=False
-                )
-                score_md = gr.Markdown("")
-            
-            with gr.Column(scale=1):
-                summary_output = gr.Textbox(
-                    label="总结",
-                    lines=3,
-                    interactive=False
-                )
-        
-        report_output = gr.Markdown(
-            label="详细报告",
-            value="*请上传简历并输入 JD 后点击分析*"
-        )
-        
-        # ===== 底部信息 =====
-        with gr.Accordion("📋 数据使用说明", open=False):
-            gr.Markdown(PRIVACY_POLICY)
-        
-        gr.HTML("""
-        <div style="text-align: center; padding: 20px; color: #666; font-size: 0.9rem;">
-            © 2025 简序智能 · AI Agent 技术服务
-        </div>
-        """)
+            # ===== 设置页 =====
+            with gr.Tab("⚙️ 设置", id="settings"):
+                gr.Markdown("### ⚙️ 设置")
+                
+                with gr.Group():
+                    gr.Markdown("#### 🎨 主题")
+                    theme_radio = gr.Radio(
+                        choices=["浅色", "深色"],
+                        value="浅色",
+                        label="界面主题",
+                        interactive=True
+                    )
+                
+                with gr.Group():
+                    gr.Markdown("#### 📋 数据存储")
+                    consent_checkbox = gr.Checkbox(
+                        label="同意存储匹配数据用于服务改进",
+                        value=False,
+                        interactive=True
+                    )
+                    gr.Markdown("*存储的数据包括：简历内容、JD、匹配报告。用于改进 AI 匹配准确度。*")
+                
+                with gr.Accordion("📋 隐私政策", open=False):
+                    gr.Markdown(PRIVACY_POLICY)
         
         # ===== 事件绑定 =====
         
-        # 页面加载时获取 token（从 URL query 参数）
         def on_load(request: gr.Request):
+            """页面加载"""
             token = request.query_params.get("token", "")
+            user_info = None
+            user_summary = {}
+            header = ""
+            consent = False
+            
             if token:
                 user_info = get_user_from_token(token)
-                if user_info:
-                    summary = ensure_user_exists(user_info)
-                    return (
-                        token,
-                        f"👤 {user_info.nickname}",
-                        f"¥{summary['balance']:.2f}",
-                        f"¥{summary['total_available']:.2f}"
-                    )
-            # Mock 模式
-            if USER_AUTH_MODE == "mock":
+            
+            if not user_info and USER_AUTH_MODE == "mock":
                 user_info = get_mock_user()
-                summary = ensure_user_exists(user_info)
-                return (
-                    "mock",
-                    f"👤 {user_info.nickname}",
-                    f"¥{summary['balance']:.2f}",
-                    f"¥{summary['total_available']:.2f}"
-                )
-            return "", "未登录", "¥0.00", "¥0.00"
+                token = "mock"
+            
+            if user_info:
+                user_summary = ensure_user_exists(user_info)
+                header = render_header(user_info, user_summary)
+                consent = check_user_consent(user_info.user_id) or False
+            else:
+                header = render_header(None, {})
+            
+            return token, user_info, user_summary, header, consent
         
         demo.load(
             on_load,
             inputs=None,
-            outputs=[token_state, user_name, user_balance, user_available]
-        )
-        
-        # 刷新用户信息
-        def refresh_user(token):
-            return get_user_info_display(token)
-        
-        refresh_btn.click(
-            refresh_user,
-            inputs=[token_state],
-            outputs=[user_name, user_balance, user_available]
+            outputs=[token_state, user_info_state, user_summary_state, header_html, consent_checkbox]
         )
         
         # 分析按钮
         analyze_btn.click(
             analyze_match,
             inputs=[jd_input, resume_upload, token_state],
-            outputs=[score_output, score_md, summary_output, report_output]
+            outputs=[score_output, score_html, result_html, report_md]
+        )
+        
+        # 刷新使用记录
+        def refresh_usage(user_info):
+            if not user_info:
+                return "<p>请先登录</p>", "<p>请先登录</p>"
+            return render_usage_table(user_info.user_id), render_history_table(user_info.user_id)
+        
+        refresh_usage_btn.click(
+            refresh_usage,
+            inputs=[user_info_state],
+            outputs=[usage_html, history_html]
+        )
+        
+        # 页面切换时加载数据
+        tabs.select(
+            lambda user_info, evt: refresh_usage(user_info) if evt.value == "usage" else (gr.skip(), gr.skip()),
+            inputs=[user_info_state],
+            outputs=[usage_html, history_html]
+        )
+        
+        # 保存同意状态
+        def save_consent(consent, user_info):
+            if user_info:
+                with get_db_session() as db:
+                    user = db.query(User).filter(User.id == user_info.user_id).first()
+                    if user:
+                        user.consent_data_storage = consent
+                        user.consent_updated_at = datetime.utcnow()
+                        db.commit()
+            return consent
+        
+        consent_checkbox.change(
+            save_consent,
+            inputs=[consent_checkbox, user_info_state],
+            outputs=[consent_checkbox]
         )
     
     return demo
