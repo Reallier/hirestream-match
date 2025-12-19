@@ -10,7 +10,7 @@ import time
 import os
 from datetime import datetime
 
-from log import log
+from log import logger as log
 from auth import verify_jwt_token, get_mock_user, UserInfo
 from user_service import UserService, get_user_service
 from match_engine import extract_text_from_upload, call_qwen_json
