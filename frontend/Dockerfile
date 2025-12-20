@@ -1,12 +1,42 @@
-FROM nginx:alpine
+# TalentAI 前端 Dockerfile
+FROM node:18-alpine AS builder
 
-# 复制前端文件到 nginx 默认目录
-COPY index.html /usr/share/nginx/html/
-COPY app.js /usr/share/nginx/html/
+WORKDIR /app
 
-# 复制 nginx 配置
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# 安装依赖
+RUN apk add --no-cache openssl libc6-compat
 
-EXPOSE 80
+COPY package*.json ./
+RUN npm ci
 
-CMD ["nginx", "-g", "daemon off;"]
+# 复制源码
+COPY . .
+
+# 生成 Prisma Client
+RUN npx prisma generate
+
+# 构建应用
+RUN npm run build
+
+# Production
+FROM node:18-alpine AS production
+
+WORKDIR /app
+
+RUN apk add --no-cache openssl libc6-compat
+
+# 复制构建产物
+COPY --from=builder /app/.output ./.output
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/prisma ./prisma
+
+# 生成 Prisma Client（生产环境）
+RUN npm install @prisma/client && npx prisma generate
+
+ENV NODE_ENV=production
+ENV NITRO_HOST=0.0.0.0
+ENV NITRO_PORT=3000
+
+EXPOSE 3000
+
+CMD ["node", ".output/server/index.mjs"]

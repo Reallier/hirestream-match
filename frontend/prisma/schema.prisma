@@ -1,0 +1,63 @@
+// 与 INTJTech_04 共享同一个数据库
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  name            String
+  email           String    @unique
+  password        String
+  avatar          String?
+  balance         Decimal   @default(0) @db.Decimal(10, 4)
+  freeQuota       Decimal   @default(1) @map("free_quota") @db.Decimal(10, 4)
+  totalUsage      Decimal   @default(0) @map("total_usage") @db.Decimal(10, 4)
+  consentDataStorage Boolean @default(false) @map("consent_data_storage")
+  consentUpdatedAt  DateTime? @map("consent_updated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  usageRecords    UsageRecord[]
+  matchRecords    MatchRecord[]
+
+  @@map("users")
+}
+
+model UsageRecord {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  requestId       String    @map("request_id")
+  operation       String
+  model           String?
+  promptTokens    Int       @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  cost            Decimal   @default(0) @db.Decimal(10, 6)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@map("hm_usage_records")
+}
+
+model MatchRecord {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  jdText          String    @map("jd_text")
+  resumeText      String    @map("resume_text")
+  resumeFilename  String?   @map("resume_filename")
+  matchScore      Int       @map("match_score")
+  reportJson      Json?     @map("report_json")
+  promptTokens    Int       @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  cost            Decimal   @default(0) @db.Decimal(10, 6)
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@map("hm_match_records")
+}
