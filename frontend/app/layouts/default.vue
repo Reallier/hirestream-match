@@ -15,7 +15,9 @@ const navItems = [
     { path: '/', label: '⚡ 即时匹配', icon: '⚡' },
     { path: '/upload', label: '📄 简历入库', icon: '📄' },
     { path: '/library', label: '📊 我的人才库', icon: '📊' },
+    { path: '/search', label: '🔍 人才搜索', icon: '🔍' },
     { path: '/match', label: '🎯 JD 匹配', icon: '🎯' },
+    { path: '/history', label: '📜 历史记录', icon: '📜' },
 ];
 
 // 格式化金额
