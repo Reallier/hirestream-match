@@ -2,7 +2,9 @@
 /**
  * TalentAI 首页 - 即时匹配
  */
-const { user, loading, initAuth, refreshUser, redirectToLogin } = useAuth();
+definePageMeta({ layout: 'default' });
+
+const { user, refreshUser, redirectToLogin } = useAuth();
 const config = useRuntimeConfig();
 
 // 表单数据
@@ -16,17 +18,15 @@ const isMatching = ref(false);
 const matchResult = ref<any>(null);
 const matchError = ref('');
 
-// 初始化认证
-onMounted(() => {
-    initAuth();
-});
+// 文件输入引用
+const fileInput = ref<HTMLInputElement | null>(null);
 
 // 处理文件选择
 const handleFileSelect = (event: Event) => {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files[0]) {
         resumeFile.value = input.files[0];
-        resumeText.value = ''; // 清空文本输入
+        resumeText.value = '';
     }
 };
 
@@ -91,8 +91,6 @@ const runMatch = async () => {
         });
 
         matchResult.value = response;
-        
-        // 刷新用户余额
         await refreshUser();
     } catch (error: any) {
         matchError.value = error.data?.message || '匹配失败，请重试';
@@ -101,202 +99,132 @@ const runMatch = async () => {
     }
 };
 
-// 格式化金额
-const formatMoney = (amount: number) => {
-    return amount.toFixed(2);
-};
+const formatMoney = (amount: number) => amount.toFixed(2);
 </script>
 
 <template>
-    <div class="app">
-        <!-- Header -->
-        <header class="header">
-            <div class="container header-inner">
-                <a href="/" class="header-logo">
-                    <span class="header-logo-icon">🎯</span>
-                    <span>TalentAI</span>
-                </a>
-                
-                <div class="user-menu" v-if="!loading">
-                    <template v-if="user">
-                        <div class="user-balance">
-                            <span>💰</span>
-                            <span class="user-balance-amount">¥{{ formatMoney(user.totalAvailable) }}</span>
-                        </div>
-                        <img 
-                            :src="user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`"
-                            :alt="user.name"
-                            class="user-avatar"
-                            :title="user.name"
-                        />
-                    </template>
-                    <template v-else>
-                        <button class="btn btn-primary" @click="redirectToLogin">
-                            登录
-                        </button>
-                    </template>
-                </div>
-            </div>
-        </header>
+    <div class="container">
+        <!-- Hero -->
+        <section class="hero">
+            <h1>⚡ 即时匹配</h1>
+            <p class="hero-desc">上传简历，输入 JD，AI 秒级分析匹配度（不入库）</p>
+        </section>
 
-        <!-- Main -->
-        <main class="main container">
-            <!-- Hero -->
-            <section class="hero">
-                <h1>⚡ 即时匹配</h1>
-                <p class="hero-desc">上传简历，输入 JD，AI 秒级分析匹配度</p>
-            </section>
-
-            <!-- 匹配表单（始终显示） -->
-            <div v-if="!loading" class="match-form">
-                <div class="match-grid">
-                    <!-- 简历输入 -->
-                    <div class="match-section">
-                        <h3>📄 简历</h3>
-                        
-                        <div 
-                            class="upload-area"
-                            :class="{ dragover: isDragging, 'has-file': resumeFile }"
-                            @click="($refs.fileInput as HTMLInputElement).click()"
-                            @dragover="handleDragOver"
-                            @dragleave="handleDragLeave"
-                            @drop="handleDrop"
-                        >
-                            <template v-if="resumeFile">
-                                <p style="font-size: 32px;">✅</p>
-                                <p style="font-weight: 500; margin-top: 8px;">{{ resumeFile.name }}</p>
-                                <p class="upload-hint">点击更换文件</p>
-                            </template>
-                            <template v-else>
-                                <p style="font-size: 32px;">📄</p>
-                                <p style="font-weight: 500; margin-top: 8px;">点击或拖拽上传简历</p>
-                                <p class="upload-hint">支持 PDF、图片格式</p>
-                            </template>
-                        </div>
-                        <input 
-                            ref="fileInput"
-                            type="file" 
-                            accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
-                            style="display: none;"
-                            @change="handleFileSelect"
-                        />
-
-                        <div class="divider">
-                            <span>或</span>
-                        </div>
-
-                        <textarea 
-                            v-model="resumeText"
-                            class="textarea"
-                            placeholder="在此粘贴简历文本内容..."
-                            :disabled="!!resumeFile"
-                            style="min-height: 150px;"
-                        ></textarea>
-                    </div>
-
-                    <!-- JD 输入 -->
-                    <div class="match-section">
-                        <h3>📋 职位描述 (JD)</h3>
-                        <textarea 
-                            v-model="jdText"
-                            class="textarea"
-                            placeholder="请输入完整的职位描述，包括岗位职责、任职要求等..."
-                            style="min-height: 350px;"
-                        ></textarea>
-                    </div>
-                </div>
-
-                <!-- 错误提示 -->
-                <div v-if="matchError" class="error-message">
-                    {{ matchError }}
-                </div>
-
-                <!-- 提交按钮 -->
-                <div class="match-submit">
-                    <button 
-                        class="btn btn-primary btn-lg" 
-                        @click="runMatch"
-                        :disabled="isMatching"
-                    >
-                        <span v-if="isMatching" class="loading-spinner"></span>
-                        <span v-else>🚀</span>
-                        {{ isMatching ? '分析中...' : '开始匹配分析' }}
-                    </button>
+        <!-- 匹配表单 -->
+        <div class="match-form">
+            <div class="match-grid">
+                <!-- 简历输入 -->
+                <div class="match-section">
+                    <h3>📄 简历</h3>
                     
-                    <!-- 未登录提示 -->
-                    <p class="match-hint" v-if="!user">
-                        <span class="login-hint">🔐 登录后即可使用 · </span>
-                        <a href="javascript:void(0)" @click="redirectToLogin" class="login-link">立即登录</a>
-                    </p>
-                    <!-- 已登录显示余额 -->
-                    <p class="match-hint" v-else>
-                        当前可用额度: <strong>¥{{ formatMoney(user.totalAvailable) }}</strong>
-                    </p>
+                    <div 
+                        class="upload-area"
+                        :class="{ dragover: isDragging, 'has-file': resumeFile }"
+                        @click="fileInput?.click()"
+                        @dragover="handleDragOver"
+                        @dragleave="handleDragLeave"
+                        @drop="handleDrop"
+                    >
+                        <template v-if="resumeFile">
+                            <p style="font-size: 32px;">✅</p>
+                            <p style="font-weight: 500; margin-top: 8px;">{{ resumeFile.name }}</p>
+                            <p class="upload-hint">点击更换文件</p>
+                        </template>
+                        <template v-else>
+                            <p style="font-size: 32px;">📄</p>
+                            <p style="font-weight: 500; margin-top: 8px;">点击或拖拽上传简历</p>
+                            <p class="upload-hint">支持 PDF、图片格式</p>
+                        </template>
+                    </div>
+                    <input 
+                        ref="fileInput"
+                        type="file" 
+                        accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+                        style="display: none;"
+                        @change="handleFileSelect"
+                    />
+
+                    <div class="divider"><span>或</span></div>
+
+                    <textarea 
+                        v-model="resumeText"
+                        class="textarea"
+                        placeholder="在此粘贴简历文本内容..."
+                        :disabled="!!resumeFile"
+                        style="min-height: 150px;"
+                    ></textarea>
+                </div>
+
+                <!-- JD 输入 -->
+                <div class="match-section">
+                    <h3>📋 职位描述 (JD)</h3>
+                    <textarea 
+                        v-model="jdText"
+                        class="textarea"
+                        placeholder="请输入完整的职位描述..."
+                        style="min-height: 350px;"
+                    ></textarea>
                 </div>
             </div>
 
-            <!-- 匹配结果 -->
-            <div v-if="matchResult" class="match-result card">
-                <h3 style="margin-bottom: 20px;">📊 匹配分析报告</h3>
-                
-                <!-- 分数展示 -->
-                <div class="score-display">
-                    <div class="score-number">{{ matchResult.match_score }}</div>
-                    <div class="score-label">匹配度</div>
+            <!-- 错误提示 -->
+            <div v-if="matchError" class="error-message">{{ matchError }}</div>
+
+            <!-- 提交按钮 -->
+            <div class="match-submit">
+                <button class="btn btn-primary btn-lg" @click="runMatch" :disabled="isMatching">
+                    <span v-if="isMatching" class="loading-spinner"></span>
+                    <span v-else>🚀</span>
+                    {{ isMatching ? '分析中...' : '开始匹配分析' }}
+                </button>
+                <p class="match-hint" v-if="!user">
+                    <span class="login-hint">🔐 登录后即可使用 · </span>
+                    <a href="javascript:void(0)" @click="redirectToLogin" class="login-link">立即登录</a>
+                </p>
+                <p class="match-hint" v-else>
+                    当前可用额度: <strong>¥{{ formatMoney(user.totalAvailable) }}</strong>
+                </p>
+            </div>
+        </div>
+
+        <!-- 匹配结果 -->
+        <div v-if="matchResult" class="match-result card">
+            <h3 style="margin-bottom: 20px;">📊 匹配分析报告</h3>
+            
+            <div class="score-display">
+                <div class="score-number">{{ matchResult.match_score }}</div>
+                <div class="score-label">匹配度</div>
+            </div>
+
+            <div class="result-grid" style="margin-top: 24px;">
+                <div class="result-card success">
+                    <div class="result-card-title"><span>✅</span> 匹配优势</div>
+                    <ul class="result-card-list">
+                        <li v-for="(item, i) in matchResult.advantages" :key="i">{{ item }}</li>
+                    </ul>
                 </div>
 
-                <!-- 详细分析 -->
-                <div class="result-grid" style="margin-top: 24px;">
-                    <div class="result-card success">
-                        <div class="result-card-title">
-                            <span>✅</span> 匹配优势
-                        </div>
-                        <ul class="result-card-list">
-                            <li v-for="(item, i) in matchResult.advantages" :key="i">{{ item }}</li>
-                        </ul>
-                    </div>
-
-                    <div class="result-card warning">
-                        <div class="result-card-title">
-                            <span>⚠️</span> 潜在风险
-                        </div>
-                        <ul class="result-card-list">
-                            <li v-for="(item, i) in matchResult.risks" :key="i">{{ item }}</li>
-                        </ul>
-                    </div>
-
-                    <div class="result-card info">
-                        <div class="result-card-title">
-                            <span>💡</span> 建议
-                        </div>
-                        <p style="font-size: 13px; color: var(--color-text-secondary);">
-                            {{ matchResult.advice }}
-                        </p>
-                    </div>
+                <div class="result-card warning">
+                    <div class="result-card-title"><span>⚠️</span> 潜在风险</div>
+                    <ul class="result-card-list">
+                        <li v-for="(item, i) in matchResult.risks" :key="i">{{ item }}</li>
+                    </ul>
                 </div>
 
-                <!-- 费用信息 -->
-                <div class="result-footer" v-if="matchResult.token_usage">
-                    本次分析消耗: ¥{{ matchResult.token_usage.cost?.toFixed(4) || '0.0000' }}
+                <div class="result-card info">
+                    <div class="result-card-title"><span>💡</span> 建议</div>
+                    <p style="font-size: 13px; color: var(--color-text-secondary);">{{ matchResult.advice }}</p>
                 </div>
             </div>
-        </main>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <div class="container">
-                <p>© 2025 TalentAI · 智能招聘匹配系统</p>
+            <div class="result-footer" v-if="matchResult.token_usage">
+                本次分析消耗: ¥{{ matchResult.token_usage.cost?.toFixed(4) || '0.0000' }}
             </div>
-        </footer>
+        </div>
     </div>
 </template>
 
 <style scoped>
-.main {
-    padding: 40px 24px;
-    min-height: calc(100vh - 64px - 60px);
-}
-
 .hero {
     text-align: center;
     margin-bottom: 40px;
@@ -324,9 +252,7 @@ const formatMoney = (amount: number) => {
 }
 
 @media (max-width: 768px) {
-    .match-grid {
-        grid-template-columns: 1fr;
-    }
+    .match-grid { grid-template-columns: 1fr; }
 }
 
 .match-section {
@@ -355,8 +281,7 @@ const formatMoney = (amount: number) => {
     font-size: 12px;
 }
 
-.divider::before,
-.divider::after {
+.divider::before, .divider::after {
     content: '';
     flex: 1;
     height: 1px;
@@ -406,26 +331,7 @@ const formatMoney = (amount: number) => {
     color: var(--color-text-muted);
 }
 
-.footer {
-    background: var(--color-bg-card);
-    border-top: 1px solid var(--color-border);
-    padding: 20px 0;
-    text-align: center;
-    color: var(--color-text-muted);
-    font-size: 13px;
-}
-
-.login-hint {
-    color: var(--color-text-muted);
-}
-
-.login-link {
-    color: var(--color-primary);
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.login-link:hover {
-    text-decoration: underline;
-}
+.login-hint { color: var(--color-text-muted); }
+.login-link { color: var(--color-primary); text-decoration: none; font-weight: 500; }
+.login-link:hover { text-decoration: underline; }
 </style>

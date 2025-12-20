@@ -24,6 +24,7 @@ model User {
 
   usageRecords    UsageRecord[]
   matchRecords    MatchRecord[]
+  candidates      Candidate[]
 
   @@map("users")
 }
@@ -61,3 +62,27 @@ model MatchRecord {
 
   @@map("hm_match_records")
 }
+
+// 候选人（用户独立人才库）
+model Candidate {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @map("user_id")
+  name            String?
+  email           String?
+  phone           String?
+  location        String?
+  currentTitle    String?   @map("current_title")
+  currentCompany  String?   @map("current_company")
+  yearsExperience Int?      @map("years_experience")
+  skills          String[]
+  resumeText      String?   @map("resume_text")
+  resumeFilename  String?   @map("resume_filename")
+  status          String    @default("active")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  user            User      @relation(fields: [userId], references: [id])
+
+  @@map("candidates")
+}
+
