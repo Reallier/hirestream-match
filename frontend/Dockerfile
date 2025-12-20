@@ -7,7 +7,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl libc6-compat
 
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # 复制源码
 COPY . .
