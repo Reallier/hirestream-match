@@ -1,10 +1,9 @@
 # TalentAI 前端 Dockerfile
-FROM node:18-alpine AS builder
+FROM node:18 AS builder
 
 WORKDIR /app
 
-# 安装依赖
-RUN apk add --no-cache openssl libc6-compat
+# 不再需要 apk add，Debian 自带通常足够的库，或者 apt-get
 
 COPY package*.json ./
 RUN npm install
@@ -19,11 +18,12 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production
-FROM node:18-alpine AS production
+FROM node:18-slim AS production
 
 WORKDIR /app
 
-RUN apk add --no-cache openssl libc6-compat
+# 安装 OpenSSL (Prisma 需要)
+RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
 # 复制构建产物
 COPY --from=builder /app/.output ./.output
