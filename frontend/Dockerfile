@@ -1,5 +1,5 @@
 # TalentAI 前端 Dockerfile
-FROM node:18 AS builder
+FROM node:22 AS builder
 
 WORKDIR /app
 
@@ -18,7 +18,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Production
-FROM node:18-slim AS production
+FROM node:22-slim AS production
 
 WORKDIR /app
 
