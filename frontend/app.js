@@ -498,6 +498,33 @@ uploadArea.addEventListener('drop', (e) => {
 
 // 页面加载完成后加载统计数据
 window.addEventListener('load', () => {
-    // 可以在这里做初始化
     console.log('TalentAI 前端已加载');
+
+    // 支持 URL 参数切换 tab（如 ?tab=instant）
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+
+    if (tabParam) {
+        const tabElement = document.getElementById(tabParam);
+        if (tabElement) {
+            // 隐藏所有 tab 内容
+            document.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.remove('active');
+            });
+            // 移除所有 tab 按钮激活状态
+            document.querySelectorAll('.tab').forEach(el => {
+                el.classList.remove('active');
+            });
+            // 显示指定 tab
+            tabElement.classList.add('active');
+            // 激活对应的 tab 按钮
+            const tabs = document.querySelectorAll('.tab');
+            tabs.forEach(tab => {
+                if (tab.textContent.toLowerCase().includes(tabParam) ||
+                    tab.getAttribute('onclick')?.includes(tabParam)) {
+                    tab.classList.add('active');
+                }
+            });
+        }
+    }
 });
