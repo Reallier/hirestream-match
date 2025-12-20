@@ -75,17 +75,17 @@ const formatDate = (date: string) => {
     <div class="container">
         <div class="page-header">
             <div class="header-content">
-                <h1>📊 我的人才库</h1>
+                <h1><FaIcon icon="users" style="margin-right: 12px;" />我的人才库</h1>
                 <p>管理您的私有候选人数据</p>
             </div>
             <NuxtLink to="/upload" class="btn btn-primary">
-                ➕ 添加候选人
+                <FaIcon icon="plus" style="margin-right: 6px;" />添加候选人
             </NuxtLink>
         </div>
 
         <!-- 未登录提示 -->
         <div v-if="!user" class="login-notice">
-            <p>🔐 请先登录后管理人才库</p>
+            <p><FaIcon icon="sign-in-alt" style="margin-right: 6px;" />请先登录后管理人才库</p>
             <button class="btn btn-primary" @click="redirectToLogin">立即登录</button>
         </div>
 
@@ -93,7 +93,7 @@ const formatDate = (date: string) => {
             <!-- 搜索栏 -->
             <div class="toolbar">
                 <div class="search-box">
-                    <span class="search-icon">🔍</span>
+                    <span class="search-icon"><FaIcon icon="search" /></span>
                     <input 
                         v-model="searchQuery"
                         @input="handleSearch"
@@ -110,7 +110,7 @@ const formatDate = (date: string) => {
             </div>
 
             <div v-else-if="candidates.length === 0" class="empty-state">
-                <div class="empty-icon">📂</div>
+                <div class="empty-icon"><FaIcon icon="folder-open" /></div>
                 <h3>人才库为空</h3>
                 <p>上传简历开始构建您的专属人才库</p>
                 <NuxtLink to="/upload" class="btn btn-outline">去上传</NuxtLink>
@@ -125,17 +125,17 @@ const formatDate = (date: string) => {
                             <span class="job-title">{{ c.currentTitle || '暂无职位' }}</span>
                         </div>
                         <button class="btn-icon delete-btn" @click="deleteCandidate(c.id)" title="删除">
-                            🗑️
+                            <FaIcon icon="trash" />
                         </button>
                     </div>
 
                     <div class="card-body">
                         <div class="info-row">
-                            <span>🏢</span>
+                            <span><FaIcon icon="building" /></span>
                             <span>{{ c.currentCompany || '暂无公司' }}</span>
                         </div>
                         <div class="info-row">
-                            <span>📅</span>
+                            <span><FaIcon icon="calendar" /></span>
                             <span>{{ c.yearsExperience ? `${c.yearsExperience}年经验` : '经验未知' }}</span>
                         </div>
                         

@@ -106,7 +106,7 @@ const formatMoney = (amount: number) => amount.toFixed(2);
     <div class="container">
         <!-- Hero -->
         <section class="hero">
-            <h1>⚡ 即时匹配</h1>
+            <h1><FaIcon icon="bolt" style="margin-right: 12px;" />即时匹配</h1>
             <p class="hero-desc">上传简历，输入 JD，AI 秒级分析匹配度（不入库）</p>
         </section>
 
@@ -115,7 +115,7 @@ const formatMoney = (amount: number) => amount.toFixed(2);
             <div class="match-grid">
                 <!-- 简历输入 -->
                 <div class="match-section">
-                    <h3>📄 简历</h3>
+                    <h3><FaIcon icon="file-alt" style="margin-right: 8px;" />简历</h3>
                     
                     <div 
                         class="upload-area"
@@ -126,12 +126,12 @@ const formatMoney = (amount: number) => amount.toFixed(2);
                         @drop="handleDrop"
                     >
                         <template v-if="resumeFile">
-                            <p style="font-size: 32px;">✅</p>
+                            <p style="font-size: 32px; color: var(--color-success);"><FaIcon icon="check-circle" /></p>
                             <p style="font-weight: 500; margin-top: 8px;">{{ resumeFile.name }}</p>
                             <p class="upload-hint">点击更换文件</p>
                         </template>
                         <template v-else>
-                            <p style="font-size: 32px;">📄</p>
+                            <p style="font-size: 32px; color: var(--color-primary);"><FaIcon icon="file-upload" /></p>
                             <p style="font-weight: 500; margin-top: 8px;">点击或拖拽上传简历</p>
                             <p class="upload-hint">支持 PDF、图片格式</p>
                         </template>
@@ -157,7 +157,7 @@ const formatMoney = (amount: number) => amount.toFixed(2);
 
                 <!-- JD 输入 -->
                 <div class="match-section">
-                    <h3>📋 职位描述 (JD)</h3>
+                    <h3><FaIcon icon="file-alt" style="margin-right: 8px;" />职位描述 (JD)</h3>
                     <textarea 
                         v-model="jdText"
                         class="textarea"
@@ -174,11 +174,11 @@ const formatMoney = (amount: number) => amount.toFixed(2);
             <div class="match-submit">
                 <button class="btn btn-primary btn-lg" @click="runMatch" :disabled="isMatching">
                     <span v-if="isMatching" class="loading-spinner"></span>
-                    <span v-else>🚀</span>
+                    <FaIcon v-else icon="bolt" style="margin-right: 6px;" />
                     {{ isMatching ? '分析中...' : '开始匹配分析' }}
                 </button>
                 <p class="match-hint" v-if="!user">
-                    <span class="login-hint">🔐 登录后即可使用 · </span>
+                    <span class="login-hint"><FaIcon icon="sign-in-alt" style="margin-right: 4px;" />登录后即可使用 · </span>
                     <a href="javascript:void(0)" @click="redirectToLogin" class="login-link">立即登录</a>
                 </p>
                 <p class="match-hint" v-else>
@@ -189,7 +189,7 @@ const formatMoney = (amount: number) => amount.toFixed(2);
 
         <!-- 匹配结果 -->
         <div v-if="matchResult" class="match-result card">
-            <h3 style="margin-bottom: 20px;">📊 匹配分析报告</h3>
+            <h3 style="margin-bottom: 20px;"><FaIcon icon="chart-bar" style="margin-right: 8px;" />匹配分析报告</h3>
             
             <div class="score-display">
                 <div class="score-number">{{ matchResult.match_score }}</div>
@@ -198,21 +198,21 @@ const formatMoney = (amount: number) => amount.toFixed(2);
 
             <div class="result-grid" style="margin-top: 24px;">
                 <div class="result-card success">
-                    <div class="result-card-title"><span>✅</span> 匹配优势</div>
+                    <div class="result-card-title"><FaIcon icon="check-circle" style="margin-right: 6px;" />匹配优势</div>
                     <ul class="result-card-list">
                         <li v-for="(item, i) in matchResult.advantages" :key="i">{{ item }}</li>
                     </ul>
                 </div>
 
                 <div class="result-card warning">
-                    <div class="result-card-title"><span>⚠️</span> 潜在风险</div>
+                    <div class="result-card-title"><FaIcon icon="exclamation-triangle" style="margin-right: 6px;" />潜在风险</div>
                     <ul class="result-card-list">
                         <li v-for="(item, i) in matchResult.risks" :key="i">{{ item }}</li>
                     </ul>
                 </div>
 
                 <div class="result-card info">
-                    <div class="result-card-title"><span>💡</span> 建议</div>
+                    <div class="result-card-title"><FaIcon icon="info-circle" style="margin-right: 6px;" />建议</div>
                     <p style="font-size: 13px; color: var(--color-text-secondary);">{{ matchResult.advice }}</p>
                 </div>
             </div>

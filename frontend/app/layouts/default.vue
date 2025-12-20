@@ -10,14 +10,14 @@ onMounted(() => {
     initAuth();
 });
 
-// 导航菜单
+// 导航菜单 - 使用 Font Awesome 图标
 const navItems = [
-    { path: '/', label: '⚡ 即时匹配', icon: '⚡' },
-    { path: '/upload', label: '📄 简历入库', icon: '📄' },
-    { path: '/library', label: '📊 我的人才库', icon: '📊' },
-    { path: '/search', label: '🔍 人才搜索', icon: '🔍' },
-    { path: '/match', label: '🎯 JD 匹配', icon: '🎯' },
-    { path: '/history', label: '📜 历史记录', icon: '📜' },
+    { path: '/', label: '即时匹配', icon: 'bolt' },
+    { path: '/upload', label: '简历入库', icon: 'cloud-upload-alt' },
+    { path: '/library', label: '我的人才库', icon: 'users' },
+    { path: '/search', label: '人才搜索', icon: 'search' },
+    { path: '/match', label: 'JD 匹配', icon: 'bullseye' },
+    { path: '/history', label: '历史记录', icon: 'history' },
 ];
 
 // 格式化金额
@@ -33,7 +33,9 @@ const formatMoney = (amount: number) => {
             <div class="container header-inner">
                 <div class="header-left">
                     <NuxtLink to="/" class="header-logo">
-                        <span class="header-logo-icon">🎯</span>
+                        <span class="header-logo-icon">
+                            <FaIcon icon="bullseye" />
+                        </span>
                         <span>TalentAI</span>
                     </NuxtLink>
                     
@@ -46,7 +48,8 @@ const formatMoney = (amount: number) => {
                             class="nav-item"
                             :class="{ active: route.path === item.path }"
                         >
-                            {{ item.label }}
+                            <FaIcon :icon="item.icon" class="nav-icon" />
+                            <span>{{ item.label }}</span>
                         </NuxtLink>
                     </nav>
                 </div>
@@ -54,7 +57,7 @@ const formatMoney = (amount: number) => {
                 <div class="user-menu" v-if="!loading">
                     <template v-if="user">
                         <div class="user-balance">
-                            <span>💰</span>
+                            <FaIcon icon="wallet" class="balance-icon" />
                             <span class="user-balance-amount">¥{{ formatMoney(user.totalAvailable) }}</span>
                         </div>
                         <img 
@@ -66,6 +69,7 @@ const formatMoney = (amount: number) => {
                     </template>
                     <template v-else>
                         <button class="btn btn-primary" @click="redirectToLogin">
+                            <FaIcon icon="sign-in-alt" style="margin-right: 6px;" />
                             登录
                         </button>
                     </template>
@@ -143,12 +147,20 @@ const formatMoney = (amount: number) => {
 }
 
 .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 16px;
     font-size: 14px;
     color: var(--color-text-secondary);
     text-decoration: none;
     border-radius: 6px;
     transition: all 0.2s;
+}
+
+.nav-icon {
+    font-size: 14px;
+    opacity: 0.8;
 }
 
 .nav-item:hover {
@@ -159,6 +171,15 @@ const formatMoney = (amount: number) => {
 .nav-item.active {
     background: var(--color-primary);
     color: white;
+}
+
+.nav-item.active .nav-icon {
+    opacity: 1;
+}
+
+.balance-icon {
+    font-size: 14px;
+    color: var(--color-primary);
 }
 
 .user-menu {

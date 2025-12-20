@@ -116,13 +116,13 @@ const formatFileSize = (bytes: number) => {
 <template>
     <div class="container">
         <section class="hero">
-            <h1>📄 简历入库</h1>
+            <h1><FaIcon icon="cloud-upload-alt" style="margin-right: 12px;" />简历入库</h1>
             <p class="hero-desc">上传简历到您的专属人才库，支持批量上传</p>
         </section>
 
         <!-- 未登录提示 -->
         <div v-if="!user" class="login-notice">
-            <p>🔐 请先登录后使用简历入库功能</p>
+            <p><FaIcon icon="sign-in-alt" style="margin-right: 6px;" />请先登录后使用简历入库功能</p>
             <button class="btn btn-primary" @click="redirectToLogin">立即登录</button>
         </div>
 
@@ -136,7 +136,7 @@ const formatFileSize = (bytes: number) => {
                 @dragleave="handleDragLeave"
                 @drop="handleDrop"
             >
-                <div class="upload-icon">📁</div>
+                <div class="upload-icon"><FaIcon icon="folder-open" /></div>
                 <p class="upload-title">点击或拖拽文件到此处</p>
                 <p class="upload-hint">支持 PDF、图片格式，可同时上传多个文件</p>
             </div>
@@ -154,11 +154,11 @@ const formatFileSize = (bytes: number) => {
                 <h3>待上传文件 ({{ files.length }})</h3>
                 <div class="file-item" v-for="(file, i) in files" :key="i">
                     <div class="file-info">
-                        <span class="file-icon">📄</span>
+                        <span class="file-icon"><FaIcon icon="file-alt" /></span>
                         <span class="file-name">{{ file.name }}</span>
                         <span class="file-size">{{ formatFileSize(file.size) }}</span>
                     </div>
-                    <button class="file-remove" @click.stop="removeFile(i)">✕</button>
+                    <button class="file-remove" @click.stop="removeFile(i)"><FaIcon icon="times" /></button>
                 </div>
             </div>
 
@@ -186,7 +186,7 @@ const formatFileSize = (bytes: number) => {
                     :key="i"
                     :class="{ success: result.success, error: !result.success }"
                 >
-                    <span class="result-icon">{{ result.success ? '✅' : '❌' }}</span>
+                    <span class="result-icon"><FaIcon :icon="result.success ? 'check-circle' : 'times-circle'" /></span>
                     <span class="result-name">{{ result.filename }}</span>
                     <span v-if="result.success && result.candidate" class="result-info">
                         → {{ result.candidate.name || '未识别姓名' }}
