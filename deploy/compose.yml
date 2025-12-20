@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # ===== 前端 =====
   talentai-frontend:
     image: ccr.ccs.tencentyun.com/reallier/talentai-frontend:latest
     container_name: talentai_frontend
@@ -20,6 +21,7 @@ services:
     depends_on:
       - talentai-backend
 
+  # ===== 后端 API =====
   talentai-backend:
     image: ccr.ccs.tencentyun.com/reallier/talentai-backend:latest
     container_name: talentai_backend
@@ -44,6 +46,34 @@ services:
     volumes:
       - uploads:/app/uploads
 
+  # ===== 匹配服务 (Gradio) =====
+  talentai-match:
+    image: ccr.ccs.tencentyun.com/reallier/talentai-match:latest
+    container_name: talentai_match
+    environment:
+      - DATABASE_URL=postgresql://talentai:talentai123@talentai-db:5432/talentai
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - USER_AUTH_MODE=jwt
+    restart: always
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      # Gradio 匹配界面 - 路径 /match
+      - "traefik.http.routers.talentai-match.rule=Host(`talentai.reallier.top`) && PathPrefix(`/match`)"
+      - "traefik.http.routers.talentai-match.entrypoints=websecure"
+      - "traefik.http.routers.talentai-match.tls=true"
+      - "traefik.http.routers.talentai-match.tls.certresolver=myresolver"
+      - "traefik.http.routers.talentai-match.middlewares=match-strip"
+      - "traefik.http.middlewares.match-strip.stripprefix.prefixes=/match"
+      - "traefik.http.services.talentai-match.loadbalancer.server.port=7860"
+    depends_on:
+      talentai-db:
+        condition: service_healthy
+
+  # ===== 数据库 =====
   talentai-db:
     image: pgvector/pgvector:pg15
     container_name: talentai_db
@@ -53,7 +83,7 @@ services:
       POSTGRES_DB: talentai
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - traefik
     healthcheck:
