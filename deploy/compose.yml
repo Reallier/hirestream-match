@@ -1,12 +1,15 @@
 version: '3.8'
 
 services:
-  # ===== 前端 =====
+  # ===== 前端 (Nuxt 4) =====
   talentai-frontend:
     image: ccr.ccs.tencentyun.com/reallier/talentai-frontend:latest
     container_name: talentai_frontend
     environment:
       - NODE_ENV=production
+      - NUXT_PUBLIC_API_BASE=https://api.talentai.reallier.top
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=postgresql://talentai:talentai123@talentai-db:5432/talentai
     restart: always
     networks:
       - traefik
@@ -17,7 +20,7 @@ services:
       - "traefik.http.routers.talentai-frontend.entrypoints=websecure"
       - "traefik.http.routers.talentai-frontend.tls=true"
       - "traefik.http.routers.talentai-frontend.tls.certresolver=myresolver"
-      - "traefik.http.services.talentai-frontend.loadbalancer.server.port=80"
+      - "traefik.http.services.talentai-frontend.loadbalancer.server.port=3000"
     depends_on:
       - talentai-backend
 
@@ -45,33 +48,6 @@ services:
         condition: service_healthy
     volumes:
       - uploads:/app/uploads
-
-  # ===== 匹配服务 (Gradio) =====
-  talentai-match:
-    image: ccr.ccs.tencentyun.com/reallier/talentai-match:latest
-    container_name: talentai_match
-    environment:
-      - DATABASE_URL=postgresql://talentai:talentai123@talentai-db:5432/talentai
-      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
-      - JWT_SECRET=${JWT_SECRET}
-      - USER_AUTH_MODE=jwt
-    restart: always
-    networks:
-      - traefik
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=traefik"
-      # Gradio 匹配界面 - 路径 /match
-      - "traefik.http.routers.talentai-match.rule=Host(`talentai.reallier.top`) && PathPrefix(`/match`)"
-      - "traefik.http.routers.talentai-match.entrypoints=websecure"
-      - "traefik.http.routers.talentai-match.tls=true"
-      - "traefik.http.routers.talentai-match.tls.certresolver=myresolver"
-      - "traefik.http.routers.talentai-match.middlewares=match-strip"
-      - "traefik.http.middlewares.match-strip.stripprefix.prefixes=/match"
-      - "traefik.http.services.talentai-match.loadbalancer.server.port=7860"
-    depends_on:
-      talentai-db:
-        condition: service_healthy
 
   # ===== 数据库 =====
   talentai-db:
