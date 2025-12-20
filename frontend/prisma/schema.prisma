@@ -1,6 +1,7 @@
 // 与 INTJTech_04 共享同一个数据库
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {

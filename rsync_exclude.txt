@@ -1,0 +1,8 @@
+.git
+.venv
+node_modules
+.DS_Store
+.output
+.nuxt
+__pycache__
+.env
