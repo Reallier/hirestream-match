@@ -11,6 +11,7 @@ class Candidate(Base):
     __tablename__ = "candidates"
     
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, index=True, nullable=False) # Copilot SaaS Update
     name = Column(String(100), nullable=False)
     email = Column(String(255), index=True)
     phone = Column(String(50), index=True)

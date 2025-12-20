@@ -243,6 +243,7 @@ async def search_candidates(
 async def ingest_resume(
     file: UploadFile = File(...),
     source: str = Form("upload"),
+    user_id: int = Form(...),
     db: Session = Depends(get_db)
 ):
     """
@@ -279,7 +280,8 @@ async def ingest_resume(
         ingest_service = IngestService(db)
         result = ingest_service.ingest_resume(
             file_path=temp_file,
-            source=source
+            source=source,
+            user_id=user_id
         )
         
         return result

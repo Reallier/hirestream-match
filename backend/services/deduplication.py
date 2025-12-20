@@ -15,7 +15,8 @@ class DeduplicationService:
         self.weak_similarity_threshold = 0.85  # 弱匹配相似度阈值
     
     def find_duplicates(
-        self, 
+        self,
+        user_id: int,
         email: Optional[str] = None,
         phone: Optional[str] = None,
         name: Optional[str] = None,
@@ -24,65 +25,70 @@ class DeduplicationService:
     ) -> Tuple[Optional[Candidate], str]:
         """
         查找重复候选人
-        
-        Returns:
-            (candidate, match_type): 
-                - candidate: 找到的重复候选人，None 表示未找到
-                - match_type: 'strong' 或 'weak' 或 'none'
+        user_id: 必须指定，只查找该用户的候选人
         """
-        # 1. 强匹配：邮箱或电话完全一致
+        # 1. 强匹配：user_id + (邮箱或电话)
         if email or phone:
-            strong_match = self._find_strong_match(email, phone)
+            strong_match = self._find_strong_match(user_id, email, phone)
             if strong_match:
                 return strong_match, 'strong'
         
-        # 2. 文本哈希完全一致（同一份简历）
+        # 2. 文本哈希完全一致
         if text_hash:
-            hash_match = self._find_by_text_hash(text_hash)
+            hash_match = self._find_by_text_hash(user_id, text_hash)
             if hash_match:
                 return hash_match, 'strong'
         
-        # 3. 弱匹配：姓名 + 公司 + 相似度
+        # 3. 弱匹配
         if name:
-            weak_match = self._find_weak_match(name, current_company)
+            # 暂时简化弱匹配，也需要在 find_weak_match 中加 user_id
+            weak_match = self._find_weak_match(user_id, name, current_company)
             if weak_match:
                 return weak_match, 'weak'
         
         return None, 'none'
     
     def _find_strong_match(
-        self, 
+        self,
+        user_id: int,
         email: Optional[str], 
         phone: Optional[str]
     ) -> Optional[Candidate]:
         """强匹配：邮箱或电话一致"""
         conditions = []
+        if email: conditions.append(Candidate.email == email)
+        if phone: conditions.append(Candidate.phone == phone)
         
-        if email:
-            conditions.append(Candidate.email == email)
-        if phone:
-            conditions.append(Candidate.phone == phone)
+        if not conditions: return None
         
-        if not conditions:
-            return None
-        
-        return self.db.query(Candidate).filter(or_(*conditions)).first()
+        # 加上 user_id 限制
+        return self.db.query(Candidate).filter(
+            Candidate.user_id == user_id,
+            or_(*conditions)
+        ).first()
     
-    def _find_by_text_hash(self, text_hash: str) -> Optional[Candidate]:
+    def _find_by_text_hash(self, user_id: int, text_hash: str) -> Optional[Candidate]:
         """通过文本哈希查找候选人"""
-        resume = self.db.query(Resume).filter(Resume.text_hash == text_hash).first()
+        resume = self.db.query(Resume).join(Candidate).filter(
+            Resume.text_hash == text_hash,
+            Candidate.user_id == user_id
+        ).first()
         if resume:
             return self.db.query(Candidate).filter(Candidate.id == resume.candidate_id).first()
         return None
     
     def _find_weak_match(
-        self, 
+        self,
+        user_id: int,
         name: str, 
         current_company: Optional[str]
     ) -> Optional[Candidate]:
         """弱匹配：姓名 + 公司相似度"""
-        # 查找同名候选人
-        candidates = self.db.query(Candidate).filter(Candidate.name == name).all()
+        # 查找同名候选人 (user_id 限制)
+        candidates = self.db.query(Candidate).filter(
+            Candidate.name == name,
+            Candidate.user_id == user_id
+        ).all()
         
         if not candidates:
             return None
