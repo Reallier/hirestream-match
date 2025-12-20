@@ -6,7 +6,7 @@ WORKDIR /app
 # 不再需要 apk add，Debian 自带通常足够的库，或者 apt-get
 
 COPY package*.json ./
-RUN npm install
+RUN rm -f package-lock.json && npm install
 
 # 复制源码
 COPY . .
