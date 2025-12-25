@@ -3,6 +3,9 @@ export default defineNuxtConfig({
   compatibilityDate: '2024-11-01',
   devtools: { enabled: true },
 
+  // 指定源码目录结构
+  serverDir: 'app/server',
+
   css: ['@/assets/css/main.css'],
 
   app: {

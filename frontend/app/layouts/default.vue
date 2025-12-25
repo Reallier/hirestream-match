@@ -3,11 +3,24 @@
  * 默认布局 - Header + 导航 + Footer
  */
 const route = useRoute();
-const { user, loading, initAuth, refreshUser, redirectToLogin } = useAuth();
+const router = useRouter();
+const { user, loading, initAuth, handleLoginCallback, refreshUser, redirectToLogin } = useAuth();
 
 // 初始化认证
-onMounted(() => {
-    initAuth();
+onMounted(async () => {
+    // 检查 URL 中是否有 token 参数（从官网 hirestream-redirect 跳转过来）
+    const urlToken = route.query.token as string;
+    if (urlToken) {
+        // 有 token，先进行登录回调处理
+        await handleLoginCallback(urlToken);
+        // 清除 URL 中的 token 参数，保留其他参数
+        const query = { ...route.query };
+        delete query.token;
+        router.replace({ path: route.path, query });
+    } else {
+        // 没有 token，正常初始化认证（从 cookie 读取）
+        await initAuth();
+    }
 });
 
 // 导航菜单 - 使用 Font Awesome 图标

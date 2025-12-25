@@ -27,8 +27,7 @@ export default defineEventHandler(async (event) => {
             email: true,
             avatar: true,
             balance: true,
-            freeQuota: true,
-            totalUsage: true
+            freeQuota: true
         }
     });
 
@@ -54,8 +53,7 @@ export default defineEventHandler(async (event) => {
 
     const balance = Number(user.balance);
     const freeQuota = Number(user.freeQuota);
-    const totalUsage = Number(user.totalUsage);
-    const freeRemaining = Math.max(0, freeQuota - totalUsage);
+    const freeRemaining = freeQuota; // totalUsage 字段在共享数据库中不存在
 
     return {
         success: true,
