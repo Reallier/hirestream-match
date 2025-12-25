@@ -17,12 +17,34 @@ from services.ingest_service import IngestService
 from services.indexing_service import IndexingService
 from config import settings
 
+# 统一日志系统
+try:
+    from intjtech_logging import setup_logging, get_logger
+    from intjtech_logging.middleware import LoggingMiddleware
+    setup_logging(
+        service_name="app01-hirestream-match",
+        log_level="INFO",
+        enable_json=True,
+        loki_url="http://43.136.53.213:3100",
+    )
+    logger = get_logger(__name__)
+    LOGGING_ENABLED = True
+except ImportError:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    LOGGING_ENABLED = False
+
 # 创建 FastAPI 应用
 app = FastAPI(
     title="TalentAI - 智能招聘匹配系统",
     description="基于 RAG 的人才匹配与简历管理系统",
     version="1.0.0"
 )
+
+# 日志中间件（优先添加）
+if LOGGING_ENABLED:
+    app.add_middleware(LoggingMiddleware)
 
 # 配置 CORS
 app.add_middleware(
