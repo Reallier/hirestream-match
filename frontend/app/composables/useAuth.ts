@@ -9,6 +9,7 @@ interface User {
     balance: number;
     freeQuota: number;
     totalAvailable: number;
+    role?: string;
 }
 
 export const useAuth = () => {

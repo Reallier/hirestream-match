@@ -86,3 +86,18 @@ model Candidate {
   @@map("candidates")
 }
 
+// 用户反馈
+model Feedback {
+  id              Int       @id @default(autoincrement())
+  userId          Int?      @map("user_id")
+  type            String    @default("suggestion") // suggestion, bug, other
+  content         String
+  contact         String?   // 用户留的联系方式（可选）
+  page            String?   // 反馈来源页面
+  status          String    @default("pending") // pending, reviewed, resolved
+  adminNote       String?   @map("admin_note")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("hm_feedbacks")
+}

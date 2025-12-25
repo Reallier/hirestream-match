@@ -93,7 +93,7 @@ def call_qwen_json(
     messages = [{"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}]
 
-    log.info("2222222222222222222222222222model_request | model={} user_prompt={}", model, messages)
+    log.debug("model_request | model={} prompt_length={}", model, len(user_prompt))
 
     last_err: Optional[Exception] = None  # 存储最后一次发生的异常
 
@@ -103,7 +103,7 @@ def call_qwen_json(
             # --- 1. API 调用 ---
             content, token_usage = _call_dashscope_via_openai(messages, model=model, timeout=10)
             # 加个日志输出返回内容
-            log.info("！！！！！！！！！！！！！！！！model_response | model={} content={}", model, content)
+            log.debug("model_response | model={} response_length={}", model, len(content))
 
             json_str = _extract_json(content)
             result = json.loads(json_str)

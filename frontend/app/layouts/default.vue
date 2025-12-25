@@ -99,8 +99,16 @@ const formatMoney = (amount: number) => {
         <footer class="footer">
             <div class="container">
                 <p>© 2025 TalentAI · 智能招聘匹配系统</p>
+                <div class="footer-links">
+                    <NuxtLink to="/terms">用户协议</NuxtLink>
+                    <span class="divider">|</span>
+                    <NuxtLink to="/privacy">隐私政策</NuxtLink>
+                </div>
             </div>
         </footer>
+
+        <!-- 反馈组件 -->
+        <FeedbackWidget />
     </div>
 </template>
 
@@ -236,6 +244,24 @@ const formatMoney = (amount: number) => {
     text-align: center;
     color: var(--color-text-muted);
     font-size: 13px;
+}
+
+.footer-links {
+    margin-top: 8px;
+}
+
+.footer-links a {
+    color: var(--color-text-muted);
+    text-decoration: none;
+}
+
+.footer-links a:hover {
+    color: var(--color-primary);
+}
+
+.footer-links .divider {
+    margin: 0 8px;
+    opacity: 0.5;
 }
 
 @media (max-width: 768px) {

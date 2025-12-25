@@ -27,7 +27,8 @@ export default defineEventHandler(async (event) => {
             email: true,
             avatar: true,
             balance: true,
-            freeQuota: true
+            freeQuota: true,
+            role: true
         }
     });
 
@@ -64,7 +65,8 @@ export default defineEventHandler(async (event) => {
             avatar: user.avatar,
             balance,
             freeQuota: freeRemaining,
-            totalAvailable: balance + freeRemaining
+            totalAvailable: balance + freeRemaining,
+            role: user.role
         }
     };
 });
