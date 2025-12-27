@@ -324,8 +324,14 @@ async def instant_match(
         import json
         import re
         
-        client = OpenAI(
-            api_key=os.getenv("DASHSCOPE_API_KEY"),
+        # 多 Key 轮询 - 支持真正并发
+        from match_service.rate_limiter import get_next_key
+        from openai import AsyncOpenAI
+        
+        api_key = get_next_key()
+        
+        client = AsyncOpenAI(
+            api_key=api_key,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
         )
         
@@ -335,7 +341,8 @@ async def instant_match(
             {"role": "user", "content": user_prompt}
         ]
         
-        resp = client.chat.completions.create(
+        # 异步调用 - 真正的并发
+        resp = await client.chat.completions.create(
             model=model,
             messages=messages,
             temperature=0.2,

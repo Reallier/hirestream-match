@@ -17,6 +17,7 @@ from qwen_pdf_ocr import QwenPDFOCR
 from openai import OpenAI
 from log import logger as log
 from token_calculator import TokenCalculator
+from rate_limiter import get_next_key
 
 # --- 轻量级、纯内存文件解析 ---
 def _read_pdf_bytes_to_text(data: bytes) -> Tuple[str, dict]:
@@ -53,8 +54,11 @@ def _call_dashscope_via_openai(messages: List[Dict[str, str]], model: str, timeo
       - 环境变量中存在 OPENAI_API_KEY 或 DASHSCOPE_API_KEY（两者任选其一）
       - 可选环境变量 OPENAI_BASE_URL（未设置则默认使用 DashScope 中国区兼容端点）
     """
+    # 获取轮询的 API Key
+    api_key = get_next_key()
+    
     client = OpenAI(
-        api_key=os.getenv("DASHSCOPE_API_KEY"),
+        api_key=api_key,
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
     )
 

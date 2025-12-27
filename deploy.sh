@@ -8,13 +8,13 @@ set -e
 ENV=${2:-"prod"}  # 默认部署到生产环境
 
 if [ "$ENV" == "staging" ]; then
-    SSH_KEY="$HOME/Downloads/test.pem"
+    SSH_KEY="/c/Users/admin/Downloads/test.pem"
     SSH_HOST="root@111.230.19.24"
     DEPLOY_PATH="/data/app-stack/talentai"
     IMAGE_TAG="staging"
     echo "🧪 目标环境: STAGING (111.230.19.24)"
 else
-    SSH_KEY="$HOME/Downloads/reallier.pem"
+    SSH_KEY="/c/Users/admin/Downloads/reallier.pem"
     SSH_HOST="root@119.29.166.51"
     DEPLOY_PATH="/data/app-stack/talentai"
     IMAGE_TAG="prod"
