@@ -43,7 +43,7 @@ const highlight = (text: string) => {
 <template>
     <div class="container">
         <section class="search-hero">
-            <h1>🔍 人才搜索</h1>
+            <h1><FaIcon icon="search" style="margin-right: 12px;" />人才搜索</h1>
             <p>输入关键词，在您的人才库中快速查找候选人</p>
             
             <div class="search-bar">

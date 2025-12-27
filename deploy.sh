@@ -1,4 +1,4 @@
-#!/bin/bash
+﻿#!/bin/bash
 # TalentAI 统一部署脚本
 
 set -e
@@ -22,21 +22,28 @@ update_compose() {
 
 deploy_backend() {
     echo ""
-    echo "[1/4] 构建 talentai-backend 镜像..."
+    echo "[1/5] 复制 shared 目录到 backend..."
+    cp -r ../shared backend/shared
+    
+    echo ""
+    echo "[2/5] 构建 talentai-backend 镜像..."
     cd backend
     docker buildx build --platform linux/amd64 -t talentai-backend:latest --load .
+    
+    # 清理复制的 shared 目录
+    rm -rf shared
     cd ..
     
     echo ""
-    echo "[2/4] 标记镜像..."
+    echo "[3/5] 标记镜像..."
     docker tag talentai-backend:latest $REGISTRY/talentai-backend:latest
     
     echo ""
-    echo "[3/4] 推送镜像..."
+    echo "[4/5] 推送镜像..."
     docker push $REGISTRY/talentai-backend:latest
     
     echo ""
-    echo "[4/4] 更新服务器..."
+    echo "[5/5] 更新服务器..."
     ssh -i $SSH_KEY $SSH_HOST "cd /data/app-stack/talentai && \
         docker compose pull talentai-backend && \
         docker compose up -d talentai-backend"

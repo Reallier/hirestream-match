@@ -23,7 +23,7 @@ const formatDate = (date: string) => new Date(date).toLocaleString();
 
 <template>
     <div class="container">
-        <h1>📜 匹配历史</h1>
+        <h1><FaIcon icon="history" style="margin-right: 12px;" />匹配历史</h1>
         
         <div v-if="!user" class="login-notice">
             <p>请登录查看历史记录</p>

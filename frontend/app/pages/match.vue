@@ -87,13 +87,13 @@ const formatMoney = (amount: number) => amount.toFixed(2);
 <template>
     <div class="container">
         <section class="hero">
-            <h1>🎯 JD 匹配</h1>
+            <h1><FaIcon icon="bullseye" style="margin-right: 12px;" />JD 匹配</h1>
             <p class="hero-desc">输入职位描述，从您的人才库中智能匹配候选人</p>
         </section>
 
         <!-- 未登录提示 -->
         <div v-if="!user" class="login-notice">
-            <p>🔐 请先登录后使用 JD 匹配功能</p>
+            <p><FaIcon icon="sign-in-alt" style="margin-right: 6px;" />请先登录后使用 JD 匹配功能</p>
             <button class="btn btn-primary" @click="redirectToLogin">立即登录</button>
         </div>
 
@@ -101,21 +101,21 @@ const formatMoney = (amount: number) => amount.toFixed(2);
             <!-- 人才库状态 -->
             <div class="library-status">
                 <div class="status-card">
-                    <span class="status-icon">📊</span>
+                    <span class="status-icon"><FaIcon icon="chart-bar" /></span>
                     <div class="status-info">
                         <span class="status-label">您的人才库</span>
                         <span class="status-value">{{ candidateCount }} 份简历</span>
                     </div>
                 </div>
                 <NuxtLink to="/upload" class="btn btn-secondary">
-                    📄 上传更多简历
+                    <FaIcon icon="file-alt" style="margin-right: 6px;" />上传更多简历
                 </NuxtLink>
             </div>
 
             <!-- JD 输入 -->
             <div class="match-form">
                 <div class="form-section">
-                    <h3>📋 职位描述 (JD)</h3>
+                    <h3><FaIcon icon="file-alt" style="margin-right: 8px;" />职位描述 (JD)</h3>
                     <textarea 
                         v-model="jdText"
                         class="textarea"
@@ -147,7 +147,7 @@ const formatMoney = (amount: number) => amount.toFixed(2);
                         :disabled="isMatching || candidateCount === 0"
                     >
                         <span v-if="isMatching" class="loading-spinner"></span>
-                        <span v-else>🔍</span>
+                        <FaIcon v-else icon="search" />
                         {{ isMatching ? '匹配中...' : '开始匹配' }}
                     </button>
                     <p class="match-hint">
@@ -158,7 +158,7 @@ const formatMoney = (amount: number) => amount.toFixed(2);
 
             <!-- 匹配结果 -->
             <div v-if="matchResults.length > 0" class="match-results">
-                <h3>🎯 匹配结果 ({{ matchResults.length }} 位候选人)</h3>
+                <h3><FaIcon icon="bullseye" style="margin-right: 8px;" />匹配结果 ({{ matchResults.length }} 位候选人)</h3>
                 
                 <div class="candidate-list">
                     <div 

@@ -16,7 +16,19 @@ class Settings(BaseSettings):
     # DashScope/Qwen
     dashscope_api_key: str
     llm_model: str = "qwen-turbo"
+    qwen_model: str = "qwen3-max"
+    ocr_model: str = "qwen-vl-ocr-2025-11-20"
     embedding_model: str = "text-embedding-v1"
+    
+    # JWT Auth
+    jwt_secret: str = "dev-secret-key-change-in-production"
+    jwt_algorithm: str = "HS256"
+    user_auth_mode: str = "mock"
+    default_free_quota: float = 1.0
+    
+    # Prompts
+    system_prompt: Optional[str] = None
+    user_template: Optional[str] = None
     
     # Application
     api_host: str = "0.0.0.0"
@@ -50,6 +62,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # 忽略未定义的环境变量
 
 
 settings = Settings()
