@@ -1,0 +1,60 @@
+version: '3.8'
+
+# TalentAI Staging 环境配置
+# 用于测试服 (111.230.19.24)
+
+services:
+  # ===== 后端 API (Staging) =====
+  talentai-backend:
+    image: ccr.ccs.tencentyun.com/reallier/talentai-backend:staging
+    container_name: talentai_backend
+    environment:
+      - DATABASE_URL=postgresql://talentai:talentai123@talentai-db:5432/talentai
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - QWEN_MODEL=${QWEN_MODEL:-qwen-max}
+      - SYSTEM_PROMPT=${SYSTEM_PROMPT:-}
+      - ENVIRONMENT=staging
+    restart: always
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.talentai-backend-test.rule=Host(`test.api.talentai.reallier.top`)"
+      - "traefik.http.routers.talentai-backend-test.entrypoints=websecure"
+      - "traefik.http.routers.talentai-backend-test.tls=true"
+      - "traefik.http.routers.talentai-backend-test.tls.certresolver=myresolver"
+      - "traefik.http.services.talentai-backend-test.loadbalancer.server.port=8000"
+    depends_on:
+      talentai-db:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+
+  # ===== 数据库 =====
+  talentai-db:
+    image: pgvector/pgvector:pg15
+    container_name: talentai_db
+    environment:
+      POSTGRES_USER: talentai
+      POSTGRES_PASSWORD: talentai123
+      POSTGRES_DB: talentai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - traefik
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U talentai" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+volumes:
+  postgres_data:
+  uploads:
+
+
+networks:
+  traefik:
+    external: true
