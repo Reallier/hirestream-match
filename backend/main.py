@@ -2,6 +2,7 @@ from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import Optional
+from datetime import datetime, timezone
 import tempfile
 import os
 
@@ -225,6 +226,16 @@ async def instant_match(
                 # 新增：YAML/JSON 格式伪装
                 (r'---\s*\n.*?(角色|role|指令|instruction)', '[检测到格式伪装]', 'yaml_attack'),
                 (r'\{\s*["\']?(role|instruction|system)', '[检测到格式伪装]', 'json_attack'),
+                
+                # 新增 v2.2：政策敏感内容检测
+                # 成人/色情内容
+                (r'(色情|裸露|成人.{0,5}(产业|内容|服务)|情趣|性交|porn|nude|erotic|adult\s*content)', '[政策敏感内容]', 'adult_content'),
+                # 暴力/恐怖内容
+                (r'(暴力.{0,5}(冲突|对抗)|血腥|杀害|武力对抗|致命.{0,5}(攻击|手段)|恐怖.{0,5}(袭击|组织)|爆炸物)', '[政策敏感内容]', 'violence_content'),
+                # 政治敏感内容
+                (r'(游行示威|政治.{0,5}(动员|集会|活动)|煽动.{0,5}对立)', '[政策敏感内容]', 'political_content'),
+                # 违法内容
+                (r'(逃税|避税.{0,5}手段|诈骗.{0,5}话术|欺诈|地下.{0,5}渠道|管制.{0,5}(药品|物品))', '[政策敏感内容]', 'illegal_content'),
             ]
             
             detections = []
@@ -267,12 +278,87 @@ async def instant_match(
             
             return False, ""
         
+        def detect_policy_risks(jd_text: str, resume_text: str) -> tuple:
+            """检测政策敏感内容并返回分数惩罚
+            
+            返回: (penalty_score, risk_categories)
+            """
+            import re
+            combined_text = (jd_text + " " + resume_text).lower()
+            
+            policy_patterns = {
+                'adult_content': {
+                    'patterns': [
+                        r'色情|裸露|成人.{0,5}(产业|内容)|情趣用品|性交|porn|nude|erotic',
+                        r'成人.{0,5}(服务|网站|视频)|低俗|诱惑'
+                    ],
+                    'penalty': 40,
+                    'description': '成人/色情内容'
+                },
+                'violence_content': {
+                    'patterns': [
+                        r'暴力.{0,5}(冲突|对抗)|血腥|杀害|武力|致命',
+                        r'恐怖.{0,5}(袭击|组织)|爆炸物|极端组织'
+                    ],
+                    'penalty': 35,
+                    'description': '暴力/恐怖内容'
+                },
+                'political_content': {
+                    'patterns': [
+                        r'游行示威|政治.{0,5}(动员|集会)|煽动.{0,5}对立',
+                        r'推翻.{0,5}(政府|政权)|颠覆'
+                    ],
+                    'penalty': 30,
+                    'description': '政治敏感内容'
+                },
+                'illegal_content': {
+                    'patterns': [
+                        r'逃税|避税.{0,5}手段|诈骗.{0,5}话术|欺诈',
+                        r'地下.{0,5}渠道|管制.{0,5}(药品|物品)|博彩|赌场'
+                    ],
+                    'penalty': 35,
+                    'description': '违法内容'
+                },
+                'discrimination_content': {
+                    'patterns': [
+                        r'(仅限|只要).{0,5}(男性|女性)',
+                        r'限.{0,5}(本地人|当地人)|歧视',
+                        r'(限|不要).{0,5}(少数民族|某族)'
+                    ],
+                    'penalty': 25,
+                    'description': '歧视性内容'
+                }
+            }
+            
+            detected_risks = []
+            total_penalty = 0
+            
+            for risk_type, config in policy_patterns.items():
+                for pattern in config['patterns']:
+                    if re.search(pattern, combined_text, re.IGNORECASE):
+                        if risk_type not in [r['type'] for r in detected_risks]:
+                            detected_risks.append({
+                                'type': risk_type,
+                                'description': config['description'],
+                                'penalty': config['penalty']
+                            })
+                            total_penalty += config['penalty']
+                        break
+            
+            if detected_risks:
+                logger.warning(f"Policy risks detected: {[r['type'] for r in detected_risks]}")
+            
+            return min(total_penalty, 60), detected_risks  # 最大惩罚 60 分
+        
         # 对 JD 和简历内容进行安全处理
         safe_jd, jd_detections = sanitize_input(jd, "JD")
         safe_resume, resume_detections = sanitize_input(final_resume_text[:8000], "Resume")
         
         # 检测 JD 是否为高风险
         is_risky, risk_reason = is_high_risk_jd(safe_jd, jd_detections)
+        
+        # 检测政策敏感内容
+        policy_penalty, policy_risks = detect_policy_risks(jd, final_resume_text)
         
         # 构建匹配分析 prompt（如果检测到注入，添加对抗性前缀）
         adversarial_prefix = ""
@@ -390,6 +476,24 @@ async def instant_match(
                 if risk_reason not in str(result.get("risks", [])):
                     result["risks"].insert(0, risk_reason)
                 logger.warning(f"High-risk JD penalty applied: {original_score} -> 30, reason: {risk_reason}")
+        
+        # 政策敏感内容惩罚
+        if policy_penalty > 0:
+            original_score = result.get("match_score", 0)
+            new_score = max(0, original_score - policy_penalty)
+            # 确保政策敏感内容的分数不超过 60
+            new_score = min(new_score, 60)
+            result["match_score"] = new_score
+            
+            if not isinstance(result.get("risks"), list):
+                result["risks"] = []
+            
+            for risk in policy_risks:
+                risk_msg = f"检测到{risk['description']}，请谨慎评估"
+                if risk_msg not in str(result.get("risks", [])):
+                    result["risks"].insert(0, risk_msg)
+            
+            logger.warning(f"Policy penalty applied: {original_score} -> {new_score}, risks: {[r['type'] for r in policy_risks]}")
         
         # 添加 token 使用量
         prompt_tokens = resp.usage.prompt_tokens
@@ -740,7 +844,7 @@ async def delete_candidate(
             action='delete',
             changes={'name': candidate.name},
             performed_by='api',
-            performed_at=datetime.utcnow()
+            performed_at=datetime.now(timezone.utc)
         )
         db.add(audit)
         

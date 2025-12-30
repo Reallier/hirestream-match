@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # DashScope/Qwen
     dashscope_api_key: str
     llm_model: str = "qwen-turbo"
-    qwen_model: str = "qwen3-max"
+    qwen_model: str = "qwen-max"
     ocr_model: str = "qwen-vl-ocr-2025-11-20"
     embedding_model: str = "text-embedding-v1"
     
