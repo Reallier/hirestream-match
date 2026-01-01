@@ -4,7 +4,7 @@
  */
 const route = useRoute();
 const router = useRouter();
-const { user, loading, initAuth, handleLoginCallback, refreshUser, redirectToLogin } = useAuth();
+const { user, loading, showLoginModal, initAuth, handleLoginCallback, refreshUser, redirectToLogin, handleLoginSuccess } = useAuth();
 
 // 初始化认证
 onMounted(async () => {
@@ -109,6 +109,12 @@ const formatMoney = (amount: number) => {
 
         <!-- 反馈组件 -->
         <FeedbackWidget />
+        
+        <!-- 登录 Modal -->
+        <LoginModal 
+            v-model="showLoginModal" 
+            @success="handleLoginSuccess"
+        />
     </div>
 </template>
 

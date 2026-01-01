@@ -15,6 +15,7 @@ interface User {
 export const useAuth = () => {
     const user = useState<User | null>('user', () => null);
     const loading = useState<boolean>('authLoading', () => true);
+    const showLoginModal = useState<boolean>('showLoginModal', () => false);
 
     /**
      * 初始化认证（页面加载时调用）
@@ -34,7 +35,7 @@ export const useAuth = () => {
     };
 
     /**
-     * 处理登录回调（从官网跳转回来时）
+     * 处理登录回调（从官网跳转回来时）- 保留兼容
      */
     const handleLoginCallback = async (token: string) => {
         try {
@@ -77,20 +78,43 @@ export const useAuth = () => {
     };
 
     /**
-     * 跳转到官网登录
+     * 打开登录 Modal
      */
+    const openLoginModal = () => {
+        showLoginModal.value = true;
+    };
+
+    /**
+     * 关闭登录 Modal
+     */
+    const closeLoginModal = () => {
+        showLoginModal.value = false;
+    };
+
+    /**
+     * 登录成功处理
+     */
+    const handleLoginSuccess = async () => {
+        await initAuth();
+        closeLoginModal();
+    };
+
+    // 保留旧的 redirectToLogin 兼容，现改为打开 Modal
     const redirectToLogin = () => {
-        const returnUrl = encodeURIComponent(window.location.origin + '/auth/callback');
-        window.location.href = `https://intjtech.reallier.top:5443/login?redirect=talentai&returnUrl=${returnUrl}`;
+        openLoginModal();
     };
 
     return {
         user,
         loading,
+        showLoginModal,
         initAuth,
         handleLoginCallback,
         refreshUser,
         logout,
+        openLoginModal,
+        closeLoginModal,
+        handleLoginSuccess,
         redirectToLogin
     };
 };
