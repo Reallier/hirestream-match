@@ -1,23 +1,21 @@
-# TalentAI 前端 Dockerfile
+# TalentAI 前端 Dockerfile (优化版)
 FROM node:22 AS builder
 
 WORKDIR /app
 
-# 不再需要 apk add，Debian 自带通常足够的库，或者 apt-get
+# 先复制依赖文件并安装（利用 Docker 缓存）
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
 
-COPY package*.json ./
-RUN rm -f package-lock.json && npm install
-
-# 复制源码
-COPY . .
-
-# 生成 Prisma Client
+# 复制 Prisma schema
+COPY prisma ./prisma
 RUN npx prisma generate
 
-# 构建应用
+# 复制源码并构建
+COPY . .
 RUN npm run build
 
-# Production
+# Production (精简镜像)
 FROM node:22-slim AS production
 
 WORKDIR /app
@@ -25,13 +23,10 @@ WORKDIR /app
 # 安装 OpenSSL (Prisma 需要)
 RUN apt-get update -y && apt-get install -y openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# 复制构建产物
+# 直接从 builder 复制已生成的 Prisma Client
 COPY --from=builder /app/.output ./.output
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/prisma ./prisma
-
-# 生成 Prisma Client（生产环境）
-RUN npm install @prisma/client && npx prisma generate
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 
 ENV NODE_ENV=production
 ENV NITRO_HOST=0.0.0.0
