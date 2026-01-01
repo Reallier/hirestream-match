@@ -47,13 +47,24 @@ app = FastAPI(
 if LOGGING_ENABLED:
     app.add_middleware(LoggingMiddleware)
 
-# 配置 CORS
+# 配置 CORS - 白名单模式
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
+    "https://talentai.reallier.top:5443",
+    "https://api.talentai.reallier.top:5443",
+    "https://intjtech.cn",
+    "https://www.intjtech.cn",
+    "http://localhost:3000",  # 开发环境
+    "http://localhost:5173",  # Vite 开发服务器
+]
+# 过滤空字符串
+CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
 
@@ -538,18 +549,20 @@ async def instant_match(
 @app.post("/api/match", response_model=MatchResponse)
 async def match_candidates(
     request: MatchRequest,
+    user_id: int,
     db: Session = Depends(get_db)
 ):
     """
-    JD 匹配候选人
+    JD 匹配候选人（按用户隔离）
     
-    根据职位描述匹配最合适的候选人，返回排序结果和证据
+    根据职位描述匹配当前用户的候选人，返回排序结果和证据
     """
     try:
         matching_service = MatchingService(db)
         
         result = matching_service.match_candidates(
             jd_text=request.jd,
+            user_id=user_id,
             filters=request.filters.dict() if request.filters else None,
             top_k=request.top_k,
             explain=request.explain
@@ -564,19 +577,21 @@ async def match_candidates(
 @app.get("/api/search", response_model=SearchResponse)
 async def search_candidates(
     q: str,
+    user_id: int,
     top_k: int = 20,
     db: Session = Depends(get_db)
 ):
     """
-    关键词搜索候选人
+    关键词搜索候选人（按用户隔离）
     
-    使用关键词进行全文搜索
+    使用关键词进行全文搜索，只搜索当前用户的候选人
     """
     try:
         matching_service = MatchingService(db)
         
         results = matching_service.search_candidates(
             query=q,
+            user_id=user_id,
             top_k=top_k
         )
         
@@ -655,17 +670,21 @@ async def ingest_resume(
 @app.get("/api/candidates/{candidate_id}", response_model=CandidateDetail)
 async def get_candidate(
     candidate_id: int,
+    user_id: int,
     db: Session = Depends(get_db)
 ):
     """
-    获取候选人详细信息
+    获取候选人详细信息（含用户权限校验）
     
     包含基本信息、工作经历、项目经历、教育背景等
     """
-    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    candidate = db.query(Candidate).filter(
+        Candidate.id == candidate_id,
+        Candidate.user_id == user_id
+    ).first()
     
     if not candidate:
-        raise HTTPException(status_code=404, detail="候选人不存在")
+        raise HTTPException(status_code=404, detail="候选人不存在或无权访问")
     
     # 构建详细响应
     from schemas import (
@@ -746,17 +765,18 @@ async def get_candidate(
 
 @app.get("/api/candidates", response_model=list)
 async def list_candidates(
+    user_id: int,
     skip: int = 0,
     limit: int = 20,
     status: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     """
-    列出候选人
+    列出候选人（按用户隔离）
     
     支持分页和状态过滤
     """
-    query = db.query(Candidate)
+    query = db.query(Candidate).filter(Candidate.user_id == user_id)
     
     if status:
         query = query.filter(Candidate.status == status)
@@ -789,13 +809,20 @@ async def list_candidates(
 @app.post("/api/reindex", response_model=ReindexResponse)
 async def reindex_candidates(
     request: ReindexRequest,
+    x_api_key: str = None,
     db: Session = Depends(get_db)
 ):
     """
-    重建索引
+    重建索引（需要 API Key 校验）
     
     可以指定候选人ID列表或时间范围
+    ⚠️ 此 API 仅限内部系统调用
     """
+    # 校验 API Key（从环境变量获取）
+    expected_key = os.environ.get("ADMIN_API_KEY", "")
+    if not expected_key or x_api_key != expected_key:
+        raise HTTPException(status_code=403, detail="此 API 需要有效的管理员 API Key")
+    
     try:
         indexing_service = IndexingService(db)
         
@@ -823,17 +850,21 @@ async def reindex_candidates(
 @app.delete("/api/candidates/{candidate_id}")
 async def delete_candidate(
     candidate_id: int,
+    user_id: int,
     db: Session = Depends(get_db)
 ):
     """
-    删除候选人
+    删除候选人（含用户权限校验）
     
     会同时删除相关的简历、索引等数据，并记录审计日志
     """
-    candidate = db.query(Candidate).filter(Candidate.id == candidate_id).first()
+    candidate = db.query(Candidate).filter(
+        Candidate.id == candidate_id,
+        Candidate.user_id == user_id
+    ).first()
     
     if not candidate:
-        raise HTTPException(status_code=404, detail="候选人不存在")
+        raise HTTPException(status_code=404, detail="候选人不存在或无权删除")
     
     try:
         # 记录审计日志
@@ -862,14 +893,19 @@ async def delete_candidate(
 # ============= 统计 API =============
 
 @app.get("/api/stats")
-async def get_stats(db: Session = Depends(get_db)):
-    """获取系统统计信息"""
+async def get_stats(user_id: int, db: Session = Depends(get_db)):
+    """获取当前用户的统计信息"""
     from models import Resume, Experience
     from sqlalchemy import func
     
-    total_candidates = db.query(func.count(Candidate.id)).scalar()
-    total_resumes = db.query(func.count(Resume.id)).scalar()
+    total_candidates = db.query(func.count(Candidate.id)).filter(
+        Candidate.user_id == user_id
+    ).scalar()
+    total_resumes = db.query(func.count(Resume.id)).join(
+        Candidate, Resume.candidate_id == Candidate.id
+    ).filter(Candidate.user_id == user_id).scalar()
     active_candidates = db.query(func.count(Candidate.id)).filter(
+        Candidate.user_id == user_id,
         Candidate.status == 'active'
     ).scalar()
     

@@ -29,15 +29,17 @@ class MatchingService:
     def match_candidates(
         self,
         jd_text: str,
+        user_id: int,
         filters: Optional[Dict[str, Any]] = None,
         top_k: Optional[int] = None,
         explain: bool = True
     ) -> Dict[str, Any]:
         """
-        根据 JD 匹配候选人
+        根据 JD 匹配候选人（按用户隔离）
         
         Args:
             jd_text: 职位描述
+            user_id: 用户 ID（用于数据隔离）
             filters: 过滤条件
             top_k: 返回Top K个结果
             explain: 是否生成解释
@@ -58,12 +60,14 @@ class MatchingService:
         # 2. 双路召回
         lexical_candidates = self._lexical_recall(
             jd_parsed, 
+            user_id,
             filters, 
             self.topk_lexical
         )
         
         vector_candidates = self._vector_recall(
             jd_text,
+            user_id,
             filters,
             self.topk_vector
         )
@@ -99,10 +103,11 @@ class MatchingService:
     def _lexical_recall(
         self,
         jd_parsed: Dict[str, Any],
+        user_id: int,
         filters: Optional[Dict[str, Any]],
         top_k: int
     ) -> List[Dict[str, Any]]:
-        """关键词召回"""
+        """关键词召回（按用户隔离）"""
         try:
             # 构建搜索查询
             search_terms = []
@@ -115,7 +120,7 @@ class MatchingService:
             # 使用 PostgreSQL 全文搜索
             search_query = ' | '.join(search_terms)  # OR 查询
             
-            # 构建 SQL
+            # 构建 SQL - 添加 user_id 过滤
             sql = text("""
                 SELECT 
                     c.id,
@@ -131,13 +136,14 @@ class MatchingService:
                 JOIN candidate_index ci ON c.id = ci.candidate_id
                 WHERE ci.lexical_tsv @@ to_tsquery('simple', :query)
                     AND c.status = 'active'
+                    AND c.user_id = :user_id
                 ORDER BY lexical_score DESC
                 LIMIT :limit
             """)
             
             result = self.db.execute(
                 sql,
-                {'query': search_query, 'limit': top_k}
+                {'query': search_query, 'user_id': user_id, 'limit': top_k}
             )
             
             candidates = []
@@ -165,10 +171,11 @@ class MatchingService:
     def _vector_recall(
         self,
         jd_text: str,
+        user_id: int,
         filters: Optional[Dict[str, Any]],
         top_k: int
     ) -> List[Dict[str, Any]]:
-        """向量召回"""
+        """向量召回（按用户隔离）"""
         try:
             # 生成 JD 的 embedding
             jd_embedding = self.llm_service.generate_embedding(jd_text)
@@ -177,7 +184,7 @@ class MatchingService:
                 print("生成 JD embedding 失败，跳过向量召回")
                 return []
             
-            # 使用向量相似度搜索
+            # 使用向量相似度搜索 - 添加 user_id 过滤
             sql = text("""
                 SELECT 
                     c.id,
@@ -192,13 +199,14 @@ class MatchingService:
                 FROM candidates c
                 JOIN candidate_index ci ON c.id = ci.candidate_id
                 WHERE c.status = 'active'
+                    AND c.user_id = :user_id
                 ORDER BY ci.embedding <=> :query_embedding::vector
                 LIMIT :limit
             """)
             
             result = self.db.execute(
                 sql,
-                {'query_embedding': str(jd_embedding), 'limit': top_k}
+                {'query_embedding': str(jd_embedding), 'user_id': user_id, 'limit': top_k}
             )
             
             candidates = []
@@ -407,14 +415,16 @@ class MatchingService:
     def search_candidates(
         self,
         query: str,
+        user_id: int,
         filters: Optional[Dict[str, Any]] = None,
         top_k: int = 20
     ) -> List[Dict[str, Any]]:
         """
-        关键词搜索候选人
+        关键词搜索候选人（按用户隔离）
         
         Args:
             query: 搜索关键词
+            user_id: 用户 ID（用于数据隔离）
             filters: 过滤条件
             top_k: 返回数量
         
@@ -422,7 +432,7 @@ class MatchingService:
             候选人列表
         """
         try:
-            # 使用全文搜索
+            # 使用全文搜索 - 添加 user_id 过滤
             sql = text("""
                 SELECT 
                     c.id,
@@ -437,13 +447,14 @@ class MatchingService:
                 JOIN candidate_index ci ON c.id = ci.candidate_id
                 WHERE ci.lexical_tsv @@ plainto_tsquery('simple', :query)
                     AND c.status = 'active'
+                    AND c.user_id = :user_id
                 ORDER BY score DESC
                 LIMIT :limit
             """)
             
             result = self.db.execute(
                 sql,
-                {'query': query, 'limit': top_k}
+                {'query': query, 'user_id': user_id, 'limit': top_k}
             )
             
             candidates = []

@@ -5,13 +5,13 @@ from typing import Optional
 class Settings(BaseSettings):
     """应用配置"""
     
-    # Database
+    # Database - 必须通过环境变量配置
     database_url: str
     database_host: str = "localhost"
     database_port: int = 5432
     database_name: str = "talentai"
     database_user: str = "talentai"
-    database_password: str = "talentai123"
+    database_password: str  # 移除默认值，强制配置
     
     # DashScope/Qwen
     dashscope_api_key: str
@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     ocr_model: str = "qwen-vl-ocr-2025-11-20"
     embedding_model: str = "text-embedding-v1"
     
-    # JWT Auth
-    jwt_secret: str = "dev-secret-key-change-in-production"
+    # JWT Auth - 生产环境必须覆盖
+    jwt_secret: str  # 移除默认值，强制配置
     jwt_algorithm: str = "HS256"
     user_auth_mode: str = "mock"
     default_free_quota: float = 1.0

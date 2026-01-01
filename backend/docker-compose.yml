@@ -3,7 +3,8 @@ services:
     image: ccr.ccs.tencentyun.com/reallier/talentai-backend:latest
     container_name: talentai_backend
     environment:
-      - DATABASE_URL=postgresql://talentai:talentai123@talentai-db:5432/talentai
+      - DATABASE_URL=postgresql://talentai:${DATABASE_PASSWORD}@talentai-db:5432/talentai
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
     restart: always
     networks:
       - traefik
@@ -23,7 +24,7 @@ services:
     container_name: talentai_db
     environment:
       POSTGRES_USER: talentai
-      POSTGRES_PASSWORD: talentai123
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-talentai_dev_123}
       POSTGRES_DB: talentai
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -31,13 +32,14 @@ services:
     networks:
       - traefik
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U talentai"]
+      test: [ "CMD-SHELL", "pg_isready -U talentai" ]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
   postgres_data:
+
 
 networks:
   traefik:

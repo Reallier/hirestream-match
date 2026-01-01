@@ -318,6 +318,7 @@ class IndexingService:
     
     def reindex_all(
         self, 
+        user_id: Optional[int] = None,
         candidate_ids: Optional[List[int]] = None,
         updated_since: Optional[datetime] = None
     ) -> Dict[str, int]:
@@ -325,6 +326,7 @@ class IndexingService:
         重建索引
         
         Args:
+            user_id: 用户 ID（用于数据隔离），None 表示全部用户（仅限管理员）
             candidate_ids: 指定候选人ID列表，None 表示全部
             updated_since: 仅重建此时间后更新的候选人
         
@@ -333,6 +335,10 @@ class IndexingService:
         """
         # 构建查询
         query = self.db.query(Candidate)
+        
+        # 添加 user_id 过滤（多租户隔离）
+        if user_id is not None:
+            query = query.filter(Candidate.user_id == user_id)
         
         if candidate_ids:
             query = query.filter(Candidate.id.in_(candidate_ids))

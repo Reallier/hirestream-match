@@ -9,7 +9,8 @@ services:
     image: ccr.ccs.tencentyun.com/reallier/talentai-backend:staging
     container_name: talentai_backend
     environment:
-      - DATABASE_URL=postgresql://talentai:talentai123@talentai-db:5432/talentai
+      - DATABASE_URL=postgresql://talentai:${DATABASE_PASSWORD}@talentai-db:5432/talentai
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
       - DASHSCOPE_API_KEYS=${DASHSCOPE_API_KEYS}
       - QWEN_MODEL=${QWEN_MODEL:-qwen-max}
@@ -38,7 +39,7 @@ services:
     container_name: talentai_db
     environment:
       POSTGRES_USER: talentai
-      POSTGRES_PASSWORD: talentai123
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: talentai
     volumes:
       - postgres_data:/var/lib/postgresql/data
