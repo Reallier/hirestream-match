@@ -4,7 +4,29 @@
  */
 const route = useRoute();
 const router = useRouter();
-const { user, loading, showLoginModal, initAuth, handleLoginCallback, refreshUser, redirectToLogin, handleLoginSuccess } = useAuth();
+const { user, loading, showLoginModal, initAuth, handleLoginCallback, refreshUser, redirectToLogin, handleLoginSuccess, logout } = useAuth();
+
+// 用户菜单状态
+const showUserMenu = ref(false);
+
+const toggleUserMenu = () => {
+    showUserMenu.value = !showUserMenu.value;
+};
+
+const handleLogout = async () => {
+    showUserMenu.value = false;
+    await logout();
+};
+
+// 点击外部关闭菜单
+if (typeof window !== 'undefined') {
+    window.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (!target.closest('.user-menu-wrapper')) {
+            showUserMenu.value = false;
+        }
+    });
+}
 
 // 初始化认证
 onMounted(async () => {
@@ -73,12 +95,29 @@ const formatMoney = (amount: number) => {
                             <FaIcon icon="wallet" class="balance-icon" />
                             <span class="user-balance-amount">¥{{ formatMoney(user.totalAvailable) }}</span>
                         </div>
-                        <img 
-                            :src="user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`"
-                            :alt="user.name"
-                            class="user-avatar"
-                            :title="user.name"
-                        />
+                        <div class="user-menu-wrapper">
+                            <img 
+                                :src="user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`"
+                                :alt="user.name"
+                                class="user-avatar"
+                                :title="user.name"
+                                @click.stop="toggleUserMenu"
+                            />
+                            <div v-show="showUserMenu" class="user-dropdown">
+                                <div class="user-dropdown-header">
+                                    <div class="user-dropdown-avatar">{{ user.name?.[0] || 'U' }}</div>
+                                    <div class="user-dropdown-info">
+                                        <div class="user-dropdown-name">{{ user.name || user.email }}</div>
+                                        <div class="user-dropdown-email">{{ user.email }}</div>
+                                    </div>
+                                </div>
+                                <div class="user-dropdown-divider"></div>
+                                <button class="user-dropdown-item" @click="handleLogout">
+                                    <FaIcon icon="sign-out-alt" />
+                                    <span>退出登录</span>
+                                </button>
+                            </div>
+                        </div>
                     </template>
                     <template v-else>
                         <button class="btn btn-primary" @click="redirectToLogin">
@@ -230,12 +269,101 @@ const formatMoney = (amount: number) => {
     color: var(--color-primary);
 }
 
+.user-menu-wrapper {
+    position: relative;
+}
+
 .user-avatar {
     width: 36px;
     height: 36px;
     border-radius: 50%;
     border: 2px solid var(--color-border);
     cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.user-avatar:hover {
+    border-color: var(--color-primary);
+}
+
+.user-dropdown {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    width: 220px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    overflow: hidden;
+}
+
+.user-dropdown-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+}
+
+.user-dropdown-avatar {
+    width: 40px;
+    height: 40px;
+    background: var(--color-primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.user-dropdown-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.user-dropdown-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-dropdown-email {
+    font-size: 12px;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.user-dropdown-divider {
+    height: 1px;
+    background: var(--color-border);
+}
+
+.user-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 16px;
+    background: transparent;
+    border: none;
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.user-dropdown-item:hover {
+    background: var(--color-bg);
+    color: var(--color-text);
 }
 
 .main-content {
