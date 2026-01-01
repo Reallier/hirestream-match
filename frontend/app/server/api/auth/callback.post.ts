@@ -44,12 +44,14 @@ export default defineEventHandler(async (event) => {
         avatar: user.avatar || undefined
     });
 
-    // 设置 cookie
+    // 设置 cookie（跨子域共享）
+    const isDev = process.env.NODE_ENV !== 'production';
     setCookie(event, 'auth_token', sessionToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 60 * 60 * 24 * 7 // 7 days
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+        path: '/',
+        ...(isDev ? {} : { domain: '.reallier.top', secure: true }),
+        sameSite: 'lax'
     });
 
     const balance = Number(user.balance);

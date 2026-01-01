@@ -52,12 +52,13 @@ export default defineEventHandler(async (event) => {
             avatar: user.avatar || undefined
         });
 
-        // 设置 Cookie
+        // 设置 Cookie（跨子域共享）
+        const isDev = process.env.NODE_ENV !== 'production';
         setCookie(event, 'auth_token', token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
             maxAge: 60 * 60 * 24 * 7, // 7 天
             path: '/',
+            ...(isDev ? {} : { domain: '.reallier.top', secure: true }),
             sameSite: 'lax'
         });
 
