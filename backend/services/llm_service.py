@@ -1,6 +1,7 @@
 import dashscope
 from typing import List, Dict, Any, Optional
 from config import settings
+from match_service.log import logger
 import json
 
 
@@ -63,7 +64,7 @@ class LLMService:
         
         except Exception as e:
             # 降级：返回空结果
-            print(f"JD 解析失败: {str(e)}")
+            logger.error(f"JD 解析失败: {str(e)}")
             return {
                 'must_skills': [],
                 'nice_skills': [],
@@ -93,7 +94,7 @@ class LLMService:
             return response.output.embeddings[0].embedding
         
         except Exception as e:
-            print(f"生成 embedding 失败: {str(e)}")
+            logger.error(f"生成 embedding 失败: {str(e)}")
             return None
     
     def generate_embeddings_batch(
@@ -131,7 +132,7 @@ class LLMService:
             return embeddings
         
         except Exception as e:
-            print(f"批量生成 embeddings 失败: {str(e)}")
+            logger.warning(f"批量生成 embeddings 失败，降级为逐个生成: {str(e)}")
             # 降级：逐个生成
             for text in texts:
                 emb = self.generate_embedding(text)
@@ -196,7 +197,7 @@ class LLMService:
             return result.get('evidences', [])
         
         except Exception as e:
-            print(f"生成证据失败: {str(e)}")
+            logger.error(f"生成证据失败: {str(e)}")
             # 降级：返回简单的匹配列表
             return [
                 {

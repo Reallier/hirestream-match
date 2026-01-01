@@ -8,6 +8,7 @@ from services.resume_parser import ResumeParser
 from services.deduplication import DeduplicationService
 from services.indexing_service import IndexingService
 from config import settings
+from match_service.log import logger
 import os
 
 
@@ -160,12 +161,20 @@ class IngestService:
             # 6. 提交事务
             self.db.commit()
             
-            # 7. 异步建立索引（延迟几秒让数据稳定）
-            # 这里简化为同步调用，实际应该用任务队列
-            import time
-            time.sleep(settings.index_delay_seconds)
+            # 7. 后台异步建立索引（避免阻塞请求）
+            import threading
             
-            self.indexing_service.index_candidate(candidate_id, force=True)
+            def delayed_index():
+                import time
+                time.sleep(settings.index_delay_seconds)
+                try:
+                    self.indexing_service.index_candidate(candidate_id, force=True)
+                except Exception as e:
+                    # 索引失败不影响主流程，仅记录日志
+                    logger.error(f"后台索引失败 (candidate_id={candidate_id}): {e}")
+            
+            # 在后台线程执行，不阻塞当前请求
+            threading.Thread(target=delayed_index, daemon=True).start()
             
             return {
                 'success': True,

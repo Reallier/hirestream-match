@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from models import Candidate, CandidateIndex, SkillRecency
 from services.llm_service import LLMService
 from config import settings
+from match_service.log import logger
 import math
 
 
@@ -165,7 +166,7 @@ class MatchingService:
             return candidates
         
         except Exception as e:
-            print(f"关键词召回失败: {str(e)}")
+            logger.error(f"关键词召回失败: {str(e)}")
             return []
     
     def _vector_recall(
@@ -181,7 +182,7 @@ class MatchingService:
             jd_embedding = self.llm_service.generate_embedding(jd_text)
             
             if not jd_embedding:
-                print("生成 JD embedding 失败，跳过向量召回")
+                logger.warning("生成 JD embedding 失败，跳过向量召回")
                 return []
             
             # 使用向量相似度搜索 - 添加 user_id 过滤
@@ -228,7 +229,7 @@ class MatchingService:
             return candidates
         
         except Exception as e:
-            print(f"向量召回失败: {str(e)}")
+            logger.error(f"向量召回失败: {str(e)}")
             return []
     
     def _merge_candidates(
@@ -355,7 +356,7 @@ class MatchingService:
             return min(avg_score, 1.0)
         
         except Exception as e:
-            print(f"计算新鲜度失败: {str(e)}")
+            logger.error(f"计算新鲜度失败: {str(e)}")
             return 0.5
     
     def _add_evidence(
@@ -408,7 +409,7 @@ class MatchingService:
             candidate_match['gaps'] = candidate_match.get('missing_skills', [])
         
         except Exception as e:
-            print(f"生成证据失败: {str(e)}")
+            logger.error(f"生成证据失败: {str(e)}")
             candidate_match['evidence'] = []
             candidate_match['gaps'] = []
     
@@ -472,5 +473,5 @@ class MatchingService:
             return candidates
         
         except Exception as e:
-            print(f"搜索失败: {str(e)}")
+            logger.error(f"搜索失败: {str(e)}")
             return []

@@ -5,6 +5,7 @@ from datetime import datetime, date
 from models import Candidate, CandidateIndex, Experience, SkillRecency
 from services.llm_service import LLMService
 from config import settings
+from match_service.log import logger
 import asyncio
 
 
@@ -62,7 +63,7 @@ class IndexingService:
             embedding = self.llm_service.generate_embedding(summary_text)
             
             if not embedding:
-                print(f"为候选人 {candidate_id} 生成 embedding 失败")
+                logger.warning(f"为候选人 {candidate_id} 生成 embedding 失败")
                 return False
             
             # 4. 构建过滤字段和特征
@@ -123,7 +124,7 @@ class IndexingService:
             return True
         
         except Exception as e:
-            print(f"索引候选人 {candidate_id} 失败: {str(e)}")
+            logger.error(f"索引候选人 {candidate_id} 失败: {str(e)}")
             self.db.rollback()
             return False
     
@@ -377,6 +378,6 @@ class IndexingService:
             return True
         
         except Exception as e:
-            print(f"删除索引失败: {str(e)}")
+            logger.error(f"删除索引失败: {str(e)}")
             self.db.rollback()
             return False
