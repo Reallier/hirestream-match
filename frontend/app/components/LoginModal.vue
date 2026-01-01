@@ -315,5 +315,3 @@ if (typeof window !== 'undefined') {
   opacity: 0;
 }
 </style>
-</CodeContent>
-<parameter name="Complexity">4
