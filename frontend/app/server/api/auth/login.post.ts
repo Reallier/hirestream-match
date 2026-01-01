@@ -87,5 +87,3 @@ export default defineEventHandler(async (event) => {
         });
     }
 });
-</CodeContent>
-    < parameter name = "Complexity" > 5
