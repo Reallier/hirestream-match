@@ -47,6 +47,12 @@ def main():
         "--module", "-m",
         help="只运行指定模块 (如: test_01_health)"
     )
+    parser.add_argument(
+        "--parallel", "-p",
+        type=int,
+        default=4,
+        help="并发 worker 数量 (默认 4，设为 0 禁用)"
+    )
     
     args = parser.parse_args()
     
@@ -67,6 +73,10 @@ def main():
     
     if args.module:
         cmd.append(f"{args.module}.py")
+    
+    # 并发执行
+    if args.parallel > 0:
+        cmd.extend(["-n", str(args.parallel)])
     
     # 禁用 SSL 警告
     cmd.extend(["-W", "ignore::urllib3.exceptions.InsecureRequestWarning"])
