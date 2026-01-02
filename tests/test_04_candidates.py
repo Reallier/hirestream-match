@@ -7,9 +7,11 @@ import pytest
 class TestCandidates:
     """候选人管理测试"""
     
-    def test_list_candidates(self, backend_client):
+    def test_list_candidates(self, backend_client, test_config):
         """获取候选人列表 - GET /api/candidates"""
-        response = backend_client.get("/api/candidates")
+        response = backend_client.get("/api/candidates", params={
+            "user_id": test_config.test_user_id
+        })
         
         assert response.status_code == 200, f"获取候选人列表失败: {response.status_code}"
         
@@ -23,9 +25,10 @@ class TestCandidates:
         print(f"📋 候选人数量: {len(candidates)}")
         print(f"✅ 候选人列表测试通过")
     
-    def test_list_candidates_pagination(self, backend_client):
+    def test_list_candidates_pagination(self, backend_client, test_config):
         """候选人列表分页 - GET /api/candidates?skip=0&limit=10"""
         response = backend_client.get("/api/candidates", params={
+            "user_id": test_config.test_user_id,
             "skip": 0,
             "limit": 10
         })
@@ -50,9 +53,10 @@ class TestCandidates:
         
         print(f"✅ 候选人计数测试通过")
     
-    def test_search_candidates(self, backend_client):
+    def test_search_candidates(self, backend_client, test_config):
         """关键词搜索候选人 - GET /api/search?q=python"""
         response = backend_client.get("/api/search", params={
+            "user_id": test_config.test_user_id,
             "q": "Python"
         })
         
@@ -66,10 +70,13 @@ class TestCandidates:
         
         print(f"✅ 候选人搜索测试通过")
     
-    def test_get_candidate_detail(self, backend_client):
+    def test_get_candidate_detail(self, backend_client, test_config):
         """获取候选人详情 - GET /api/candidates/1"""
         # 先获取列表找一个有效 ID
-        list_response = backend_client.get("/api/candidates", params={"limit": 1})
+        list_response = backend_client.get("/api/candidates", params={
+            "user_id": test_config.test_user_id,
+            "limit": 1
+        })
         
         if list_response.status_code == 200:
             data = list_response.json()
@@ -78,7 +85,9 @@ class TestCandidates:
             if candidates:
                 candidate_id = candidates[0].get("id", 1)
                 
-                response = backend_client.get(f"/api/candidates/{candidate_id}")
+                response = backend_client.get(f"/api/candidates/{candidate_id}", params={
+                    "user_id": test_config.test_user_id
+                })
                 assert response.status_code in [200, 404], \
                     f"获取详情失败: {response.status_code}"
                 
@@ -90,9 +99,11 @@ class TestCandidates:
         
         print(f"✅ 候选人详情测试通过")
     
-    def test_get_nonexistent_candidate(self, backend_client):
+    def test_get_nonexistent_candidate(self, backend_client, test_config):
         """获取不存在的候选人"""
-        response = backend_client.get("/api/candidates/999999")
+        response = backend_client.get("/api/candidates/999999", params={
+            "user_id": test_config.test_user_id
+        })
         
         # 应该返回 404
         assert response.status_code == 404, \
