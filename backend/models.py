@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, ARRAY, Float, JSON
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
@@ -115,7 +116,7 @@ class CandidateIndex(Base):
     __tablename__ = "candidate_index"
     
     candidate_id = Column(Integer, ForeignKey('candidates.id', ondelete='CASCADE'), primary_key=True)
-    lexical_tsv = Column(Text)  # PostgreSQL tsvector 存储为文本
+    lexical_tsv = Column(TSVECTOR)  # PostgreSQL tsvector 全文搜索
     embedding = Column(Vector(1536))  # OpenAI embedding 维度
     filters_json = Column(JSON)  # 过滤字段快照
     features_json = Column(JSON)  # 特征摘要

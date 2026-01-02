@@ -49,10 +49,10 @@ onMounted(async () => {
 const navItems = [
     { path: '/', label: '即时匹配', icon: 'bolt' },
     { path: '/upload', label: '简历入库', icon: 'cloud-upload-alt' },
-    { path: '/library', label: '我的人才库', icon: 'users' },
-    { path: '/search', label: '人才搜索', icon: 'search' },
-    { path: '/match', label: 'JD 匹配', icon: 'bullseye' },
-    { path: '/history', label: '历史记录', icon: 'history' },
+    { path: '/library', label: '我的人才库', icon: 'users', disabled: true },
+    { path: '/search', label: '人才搜索', icon: 'search', disabled: true },
+    { path: '/match', label: 'JD 匹配', icon: 'bullseye', disabled: true },
+    { path: '/history', label: '历史记录', icon: 'history', disabled: true },
 ];
 
 // 格式化金额
@@ -76,16 +76,28 @@ const formatMoney = (amount: number) => {
                     
                     <!-- 导航 -->
                     <nav class="nav">
-                        <NuxtLink 
-                            v-for="item in navItems" 
-                            :key="item.path"
-                            :to="item.path"
-                            class="nav-item"
-                            :class="{ active: route.path === item.path }"
-                        >
-                            <FaIcon :icon="item.icon" class="nav-icon" />
-                            <span>{{ item.label }}</span>
-                        </NuxtLink>
+                        <template v-for="item in navItems" :key="item.path">
+                            <!-- 已开放的功能 -->
+                            <NuxtLink 
+                                v-if="!item.disabled"
+                                :to="item.path"
+                                class="nav-item"
+                                :class="{ active: route.path === item.path }"
+                            >
+                                <FaIcon :icon="item.icon" class="nav-icon" />
+                                <span>{{ item.label }}</span>
+                            </NuxtLink>
+                            <!-- 暂未开放的功能 -->
+                            <div 
+                                v-else
+                                class="nav-item nav-item-disabled"
+                                :title="'暂未开放'"
+                            >
+                                <FaIcon :icon="item.icon" class="nav-icon" />
+                                <span>{{ item.label }}</span>
+                                <span class="coming-soon-badge">即将上线</span>
+                            </div>
+                        </template>
                     </nav>
                 </div>
                 
@@ -241,6 +253,30 @@ const formatMoney = (amount: number) => {
 
 .nav-item.active .nav-icon {
     opacity: 1;
+}
+
+.nav-item-disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    position: relative;
+}
+
+.nav-item-disabled:hover {
+    background: transparent;
+    color: var(--color-text-secondary);
+}
+
+.coming-soon-badge {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    background: linear-gradient(135deg, #ff6b6b, #ff8e53);
+    color: white;
+    font-size: 9px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+    white-space: nowrap;
 }
 
 .balance-icon {
