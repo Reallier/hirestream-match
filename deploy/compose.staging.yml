@@ -16,6 +16,7 @@ services:
       - QWEN_MODEL=${QWEN_MODEL:-qwen-max}
       - SYSTEM_PROMPT=${SYSTEM_PROMPT:-}
       - ENVIRONMENT=staging
+      - UVICORN_WORKERS=4 # 4 workers 支持并发测试
     restart: always
     networks:
       - traefik
