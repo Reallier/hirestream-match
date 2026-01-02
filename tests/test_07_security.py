@@ -454,34 +454,59 @@ class TestFunctionalRobustness:
         print("✅ FUNC-009 通过")
     
     def test_func_010_timeout_resilience(self, backend_client, sample_jd, sample_resume):
-        """TALENTAI-FUNC-010: 超时弹性"""
-        # 此测试验证请求能在合理时间内完成（带重试）
+        """TALENTAI-FUNC-010: 超时弹性
+        
+        验证标准:
+        - 正常响应: < 15s (PASS)
+        - 可接受: 15-30s (PASS + WARNING)
+        - 超时: > 30s (FAIL)
+        """
         import time
+        import logging
+        logger = logging.getLogger(__name__)
+        
         max_retries = 2
+        timeout_threshold = 30  # 秒
+        warning_threshold = 15  # 秒
         
         for attempt in range(max_retries):
             start = time.time()
-            response = backend_client.post("/api/instant-match", data={
-                "jd": sample_jd,
-                "resume_text": sample_resume,
-            })
-            duration = time.time() - start
-            
-            if response.status_code == 200:
-                assert duration < 90, f"响应时间过长: {duration:.1f}s"
-                print(f"✅ FUNC-010 通过 (响应时间: {duration:.1f}s)")
-                return
-            elif response.status_code == 502 and attempt < max_retries - 1:
-                print(f"⚠️ 第{attempt+1}次尝试失败 (502)，重试...")
-                time.sleep(2)
-                continue
-            else:
-                # 其他错误也接受，记录日志
-                print(f"⚠️ FUNC-010 状态码: {response.status_code}, 耗时: {duration:.1f}s")
-                return
+            try:
+                response = backend_client.post("/api/instant-match", data={
+                    "jd": sample_jd,
+                    "resume_text": sample_resume,
+                })
+                duration = time.time() - start
+                
+                logger.info(f"[FUNC-010] 第{attempt+1}次请求: 状态码={response.status_code}, 耗时={duration:.2f}s")
+                
+                if response.status_code == 200:
+                    if duration > timeout_threshold:
+                        pytest.fail(f"响应时间过长: {duration:.1f}s (阈值: {timeout_threshold}s)")
+                    elif duration > warning_threshold:
+                        logger.warning(f"[FUNC-010] ⚠️ 响应较慢: {duration:.1f}s (建议优化)")
+                        print(f"⚠️ FUNC-010 通过但响应较慢 ({duration:.1f}s > {warning_threshold}s)")
+                    else:
+                        print(f"✅ FUNC-010 通过 (响应时间: {duration:.1f}s)")
+                    return
+                elif response.status_code == 502 and attempt < max_retries - 1:
+                    logger.warning(f"[FUNC-010] 网关错误 502，{2}s 后重试...")
+                    print(f"⚠️ 第{attempt+1}次尝试失败 (502)，重试...")
+                    time.sleep(2)
+                    continue
+                else:
+                    logger.error(f"[FUNC-010] 异常状态码: {response.status_code}, 响应: {response.text[:200]}")
+                    pytest.fail(f"异常状态码: {response.status_code}")
+                    
+            except Exception as e:
+                duration = time.time() - start
+                logger.error(f"[FUNC-010] 请求异常: {e}, 耗时: {duration:.2f}s")
+                if attempt < max_retries - 1:
+                    time.sleep(2)
+                    continue
+                pytest.fail(f"请求异常: {e}")
         
-        # 最终重试后仍失败，记录但不失败
-        print(f"⚠️ FUNC-010 重试后仍失败，跳过")
+        pytest.fail("多次重试后仍失败")
 
 
 # ==================== 4. 传统安全类 SEC (8 用例) ====================
