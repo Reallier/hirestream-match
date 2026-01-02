@@ -1,0 +1,29 @@
+{
+  "runs": [
+    {
+      "time": "2026-01-02 13:24",
+      "env": "test",
+      "passed": 81,
+      "failed": 0,
+      "total": 81,
+      "failed_tests": [
+        "test_07_security.py::TestInformationLeakage::test_leak_006_server_config",
+        "test_07_security.py::TestPromptInjection::test_injection_role_play",
+        "test_07_security.py::TestInformationLeakage::test_leak_006_server_config",
+        "test_07_security.py::TestPromptInjection::test_injection_role_play"
+      ]
+    }
+  ],
+  "tests": {
+    "test_07_security.py::TestInformationLeakage::test_leak_006_server_config": {
+      "fail_count": 2,
+      "last_status": "failed",
+      "last_fail": "2026-01-02 13:24"
+    },
+    "test_07_security.py::TestPromptInjection::test_injection_role_play": {
+      "fail_count": 2,
+      "last_status": "failed",
+      "last_fail": "2026-01-02 13:24"
+    }
+  }
+}
