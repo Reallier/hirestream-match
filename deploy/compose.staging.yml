@@ -9,14 +9,14 @@ services:
     image: ccr.ccs.tencentyun.com/reallier/talentai-backend:staging
     container_name: talentai_backend
     environment:
-      - DATABASE_URL=postgresql://talentai:${DATABASE_PASSWORD}@talentai-db:5432/talentai
-      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_URL=postgresql://talentai:talentai123@talentai_db:5432/talentai
+      - AUTH_DATABASE_URL=postgresql://talentai:talentai123@talentai_db:5432/intjtech_users
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
       - DASHSCOPE_API_KEYS=${DASHSCOPE_API_KEYS}
       - QWEN_MODEL=${QWEN_MODEL:-qwen-max}
       - SYSTEM_PROMPT=${SYSTEM_PROMPT:-}
       - ENVIRONMENT=staging
-      - UVICORN_WORKERS=4 # 4 workers 支持并发测试
+      - UVICORN_WORKERS=4
     restart: always
     networks:
       - traefik
@@ -40,7 +40,7 @@ services:
     container_name: talentai_db
     environment:
       POSTGRES_USER: talentai
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_PASSWORD: talentai123
       POSTGRES_DB: talentai
     volumes:
       - postgres_data:/var/lib/postgresql/data

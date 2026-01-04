@@ -1,0 +1,30 @@
+version: '3.8'
+
+# TalentAI 测试环境前端配置
+# compose.staging.yml 用于后端，这个文件用于前端
+
+services:
+  # ===== 前端 (Nuxt 4) =====
+  talentai-frontend:
+    image: ccr.ccs.tencentyun.com/reallier/talentai-frontend:latest
+    container_name: talentai_frontend
+    environment:
+      - NODE_ENV=production
+      - NUXT_PUBLIC_API_BASE=https://test.api.talentai.reallier.top
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=postgresql://talentai:talentai123@talentai_db:5432/intjtech_users
+    restart: always
+    networks:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik"
+      - "traefik.http.routers.talentai-frontend.rule=Host(`test.talentai.reallier.top`)"
+      - "traefik.http.routers.talentai-frontend.entrypoints=websecure"
+      - "traefik.http.routers.talentai-frontend.tls=true"
+      - "traefik.http.routers.talentai-frontend.tls.certresolver=myresolver"
+      - "traefik.http.services.talentai-frontend.loadbalancer.server.port=3000"
+
+networks:
+  traefik:
+    external: true
