@@ -7,7 +7,7 @@ SSO 跨应用认证集成测试
 问题清单：
 1. CORS 配置未包含测试环境 URL（带端口）
 2. JWT_SECRET 未在所有服务间同步
-3. JWT Payload 格式不兼容（user_id vs id）
+3. JWT Payload 格式统一（2026 标准：纯整数 user_id）
 4. Cookie 域配置问题
 5. 前端 API_BASE 配置缺少端口号
 """
@@ -164,9 +164,9 @@ class TestSSOFlow:
         
         验证 TalentAI 后端能正确解析官网签发的 JWT Token
         
-        问题背景：
-        - 官网 Token 包含 user_id: "intj_X" 格式
-        - TalentAI 需要兼容解析这种格式
+        2026 统一标准：
+        - 官网和 TalentAI 统一使用纯整数 user_id
+        - 无需兼容处理 intj_ 前缀
         """
         # 先从官网登录获取 Token
         login_response = requests.post(
@@ -301,20 +301,19 @@ class TestJWTCompatibility:
         assert "user_id" in payload, "缺少 user_id 字段"
         assert "exp" in payload, "缺少过期时间"
     
-    @pytest.mark.xfail(reason="intj_ 前缀格式已废弃，使用纯 int user_id")
-    def test_jwt_format_003_intj_prefix_parsing(self):
+    def test_jwt_format_003_unified_integer_user_id(self):
         """
-        JWT-FORMAT-003: intj_ 前缀解析
+        JWT-FORMAT-003: 统一整数 user_id 格式
         
-        验证 TalentAI 能正确解析 "intj_X" 格式的 user_id
+        验证 2026 统一标准：所有服务使用纯整数 user_id
         
-        问题背景：
-        - 官网早期使用 user_id: "intj_6" 格式
-        - TalentAI 需要提取数字部分作为 user_id
+        历史变更：
+        - 2026-01-04: 废弃 intj_ 前缀格式，统一使用纯整数
         """
-        # 构造 intj_ 格式的 Token
+        # 构造纯整数格式的 Token（2026 统一标准）
         payload = {
-            "user_id": "intj_6",
+            "id": 6,
+            "user_id": 6,  # 纯整数
             "nickname": "测试用户",
             "iat": int(datetime.now().timestamp()),
             "exp": int((datetime.now() + timedelta(days=7)).timestamp())
@@ -331,7 +330,7 @@ class TestJWTCompatibility:
         assert response.status_code == 200
         data = response.json()
         assert data.get("success") is True
-        assert data.get("user", {}).get("id") == 6, "intj_ 前缀解析失败"
+        assert data.get("user", {}).get("id") == 6, "用户 ID 解析失败"
 
 
 # ============= API 端点测试 =============

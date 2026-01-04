@@ -57,43 +57,27 @@ environment:
 
 ---
 
-### 3. JWT Payload 格式不兼容
+### 3. JWT Payload 格式（2026 统一标准）
 
-**问题描述**：官网和 TalentAI 的 JWT Payload 结构不同
+> ⚠️ **2026-01-04 更新**：`intj_` 前缀格式已废弃，统一使用纯整数 `user_id`
 
-**现象**：
-- Token 验证失败
-- user_id 解析错误
-
-**官网格式**：
+**统一格式（2026 标准）**：
 ```json
 {
   "id": 6,
-  "email": "demo@test.com",
-  "user_id": "intj_6",
-  "nickname": "测试用户"
-}
-```
-
-**TalentAI 格式**：
-```json
-{
   "user_id": 6,
+  "email": "demo@test.com",
   "nickname": "测试用户"
 }
 ```
 
-**解决方案**：TalentAI 后端兼容解析两种格式
+**解析逻辑（简化后）**：
 ```python
-# 优先使用 id，兼容 user_id 和 intj_X 格式
-user_id = payload.get("id")
-if not user_id:
-    user_id_str = payload.get("user_id")
-    if user_id_str and str(user_id_str).startswith("intj_"):
-        user_id = int(user_id_str.replace("intj_", ""))
+# 2026 统一标准：纯整数格式
+user_id = payload.get("id") or payload.get("user_id")
 ```
 
-**测试用例**：`TestJWTCompatibility.test_jwt_format_003_intj_prefix_parsing`
+**测试用例**：`TestJWTCompatibility.test_jwt_format_003_unified_integer_user_id`
 
 ---
 

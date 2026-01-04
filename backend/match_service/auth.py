@@ -51,17 +51,9 @@ def verify_jwt_token(token: str) -> Optional[UserInfo]:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         
-        # 统一使用 Integer user_id
-        # 优先使用 id（官网格式），支持 user_id 字段（兼容旧格式 intj_X）
-        user_id = payload.get("id")
-        if not user_id:
-            # 兼容旧格式：从 intj_X 或 user_id 提取数字
-            user_id_str = payload.get("user_id") or payload.get("sub")
-            if user_id_str:
-                if isinstance(user_id_str, str) and user_id_str.startswith("intj_"):
-                    user_id = int(user_id_str.replace("intj_", ""))
-                else:
-                    user_id = int(user_id_str) if str(user_id_str).isdigit() else None
+        # 统一使用 Integer user_id（2026 标准：纯整数格式）
+        # 优先 id，其次 user_id
+        user_id = payload.get("id") or payload.get("user_id")
         
         if not user_id:
             log.warning("jwt_verify_failed | reason=missing_user_id")
