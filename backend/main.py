@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import tempfile
 import os
 
-from database import get_db, init_db
+from database import get_db, get_auth_db, init_db
 from schemas import (
     MatchRequest, MatchResponse, SearchRequest, SearchResponse,
     CandidateResponse, CandidateDetail, ReindexRequest, ReindexResponse,
@@ -17,6 +17,9 @@ from services.matching_service import MatchingService
 from services.ingest_service import IngestService
 from services.indexing_service import IndexingService
 from config import settings
+from routers.auth import router as auth_router
+from routers.history import router as history_router
+from routers.feedback import router as feedback_router
 
 # 统一日志系统
 try:
@@ -49,12 +52,18 @@ if LOGGING_ENABLED:
 
 # 配置 CORS - 白名单模式
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
-    "https://talentai.reallier.top:5443",
-    "https://api.talentai.reallier.top:5443",
+    # 生产环境
+    "https://talentai.reallier.top",
+    "https://api.talentai.reallier.top",
     "https://intjtech.cn",
     "https://www.intjtech.cn",
-    "http://localhost:3000",  # 开发环境
-    "http://localhost:5173",  # Vite 开发服务器
+    # 测试环境 (带端口)
+    "https://test.talentai.reallier.top:5443",
+    "https://test.api.talentai.reallier.top:5443",
+    "https://test.intjtech.reallier.top:5443",
+    # 开发环境
+    "http://localhost:3000",
+    "http://localhost:5173",
 ]
 # 过滤空字符串
 CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS if origin.strip()]
@@ -67,6 +76,10 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
+# 注册路由
+app.include_router(auth_router)
+app.include_router(history_router)
+app.include_router(feedback_router)
 
 @app.on_event("startup")
 async def startup_event():

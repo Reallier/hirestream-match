@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     """应用配置"""
     
     # Database - 必须通过环境变量配置
-    database_url: str
+    database_url: str  # 业务数据库 (candidates, resumes, etc.)
+    auth_database_url: Optional[str] = None  # 用户主库 (users), 如不设置则使用 database_url
     database_host: str = "localhost"
     database_port: int = 5432
     database_name: str = "talentai"

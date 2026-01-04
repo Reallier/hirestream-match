@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Optional
 import jwt
 from dotenv import load_dotenv
-from log import logger as log
+from loguru import logger as log
 
 load_dotenv()
 

@@ -179,3 +179,31 @@ class MatchRecord(Base):
     
     def __repr__(self):
         return f"<MatchRecord(id={self.id}, user_id={self.user_id}, score={self.match_score})>"
+
+
+class Feedback(Base):
+    """用户反馈模型"""
+    __tablename__ = "hm_feedbacks"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    
+    # 反馈内容
+    type = Column(String(50), default="suggestion", comment="suggestion, bug, other")
+    content = Column(Text, nullable=False)
+    contact = Column(String(255), nullable=True, comment="联系方式")
+    page = Column(String(255), nullable=True, comment="来源页面")
+    
+    # 状态
+    status = Column(String(50), default="pending", comment="pending, reviewed, resolved")
+    admin_note = Column(Text, nullable=True)
+    
+    # 时间
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # 关联
+    user = relationship("User", backref="feedbacks")
+    
+    def __repr__(self):
+        return f"<Feedback(id={self.id}, type={self.type}, status={self.status})>"
