@@ -1,5 +1,7 @@
 /**
  * 用户认证 Composable
+ * 
+ * 所有认证 API 调用后端 FastAPI 服务
  */
 interface User {
     id: number;
@@ -13,6 +15,9 @@ interface User {
 }
 
 export const useAuth = () => {
+    const config = useRuntimeConfig();
+    const apiBase = config.public.apiBase;
+
     const user = useState<User | null>('user', () => null);
     const loading = useState<boolean>('authLoading', () => true);
     const showLoginModal = useState<boolean>('showLoginModal', () => false);
@@ -23,7 +28,10 @@ export const useAuth = () => {
     const initAuth = async () => {
         loading.value = true;
         try {
-            const response = await $fetch<{ success: boolean; user: User }>('/api/auth/me');
+            // 调用后端 API
+            const response = await $fetch<{ success: boolean; user: User }>(`${apiBase}/api/auth/me`, {
+                credentials: 'include'  // 携带 Cookie
+            });
             if (response.success && response.user) {
                 user.value = response.user;
             }
@@ -35,18 +43,33 @@ export const useAuth = () => {
     };
 
     /**
+     * 用户登录
+     */
+    const login = async (username: string, password: string): Promise<{ success: boolean; message?: string }> => {
+        try {
+            const response = await $fetch<{ success: boolean; user: User; detail?: string }>(`${apiBase}/api/auth/login`, {
+                method: 'POST',
+                body: { username, password },
+                credentials: 'include'
+            });
+            if (response.success && response.user) {
+                user.value = response.user;
+                return { success: true };
+            }
+            return { success: false, message: response.detail || '登录失败' };
+        } catch (error: any) {
+            return { success: false, message: error?.data?.detail || '登录失败' };
+        }
+    };
+
+    /**
      * 处理登录回调（从官网跳转回来时）- 保留兼容
      */
     const handleLoginCallback = async (token: string) => {
         try {
-            const response = await $fetch<{ success: boolean; user: User }>('/api/auth/callback', {
-                method: 'POST',
-                body: { token }
-            });
-            if (response.success && response.user) {
-                user.value = response.user;
-                return true;
-            }
+            // 使用 token 直接初始化
+            await initAuth();
+            return !!user.value;
         } catch (error) {
             console.error('Login callback failed:', error);
         }
@@ -59,7 +82,9 @@ export const useAuth = () => {
     const refreshUser = async () => {
         if (!user.value) return;
         try {
-            const response = await $fetch<{ success: boolean; user: User }>('/api/auth/me');
+            const response = await $fetch<{ success: boolean; user: User }>(`${apiBase}/api/auth/me`, {
+                credentials: 'include'
+            });
             if (response.success && response.user) {
                 user.value = response.user;
             }
@@ -72,7 +97,10 @@ export const useAuth = () => {
      * 退出登录
      */
     const logout = async () => {
-        await $fetch('/api/auth/logout', { method: 'POST' });
+        await $fetch(`${apiBase}/api/auth/logout`, {
+            method: 'POST',
+            credentials: 'include'
+        });
         user.value = null;
         navigateTo('/');
     };
@@ -109,6 +137,7 @@ export const useAuth = () => {
         loading,
         showLoginModal,
         initAuth,
+        login,
         handleLoginCallback,
         refreshUser,
         logout,
