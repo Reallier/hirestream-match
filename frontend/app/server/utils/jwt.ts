@@ -20,8 +20,8 @@ export async function verifyUserToken(token: string): Promise<JwtPayload | null>
         const secret = new TextEncoder().encode(JWT_SECRET);
         const { payload } = await jose.jwtVerify(token, secret);
         return payload as unknown as JwtPayload;
-    } catch (error) {
-        console.error('JWT verification failed:', error);
+    } catch {
+        // Token 验证失败，静默返回 null
         return null;
     }
 }

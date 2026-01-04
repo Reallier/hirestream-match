@@ -28,18 +28,34 @@ const performSearch = async () => {
             credentials: 'include'
         });
         results.value = response.results || [];
-    } catch (error) {
-        console.error('Search failed', error);
+    } catch {
+        // 搜索失败，静默处理
     } finally {
         isSearching.value = false;
     }
 };
 
-// 高亮关键词
+// 转义正则特殊字符
+const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// 转义 HTML 特殊字符 (防 XSS)
+const escapeHtml = (str: string) => {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+};
+
+// 高亮关键词 (安全版)
 const highlight = (text: string) => {
-    if (!query.value) return text;
-    const regex = new RegExp(`(${query.value})`, 'gi');
-    return text?.replace(regex, '<mark>$1</mark>') || '';
+    const escaped = escapeHtml(text);
+    if (!query.value) return escaped;
+    const safeQuery = escapeRegex(query.value);
+    const regex = new RegExp(`(${safeQuery})`, 'gi');
+    return escaped.replace(regex, '<mark>$1</mark>');
 };
 </script>
 

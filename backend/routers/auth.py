@@ -85,7 +85,7 @@ async def login(
         path="/",
         domain=".reallier.top",
         secure=True,
-        httponly=False,
+        httponly=True,  # 防止 XSS 窃取 Token
         samesite="lax"
     )
     
