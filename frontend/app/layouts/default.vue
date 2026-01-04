@@ -49,10 +49,10 @@ onMounted(async () => {
 const navItems = [
     { path: '/', label: '即时匹配', icon: 'bolt' },
     { path: '/upload', label: '简历入库', icon: 'cloud-upload-alt' },
-    { path: '/library', label: '我的人才库', icon: 'users', disabled: true },
-    { path: '/search', label: '人才搜索', icon: 'search', disabled: true },
-    { path: '/match', label: 'JD 匹配', icon: 'bullseye', disabled: true },
-    { path: '/history', label: '历史记录', icon: 'history', disabled: true },
+    { path: '/library', label: '我的人才库', icon: 'users' },
+    { path: '/search', label: '人才搜索', icon: 'search' },
+    { path: '/match', label: 'JD 匹配', icon: 'bullseye' },
+    { path: '/history', label: '历史记录', icon: 'history' },
 ];
 
 // 格式化金额

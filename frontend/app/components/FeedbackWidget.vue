@@ -1,7 +1,12 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 /**
  * 反馈组件 - 浮动按钮 + 弹窗表单
+ * 
+ * 调用后端 FastAPI 服务
  */
+const config = useRuntimeConfig();
+const apiBase = config.public.apiBase;
+
 const isOpen = ref(false);
 const isSubmitting = ref(false);
 const submitted = ref(false);
@@ -25,8 +30,9 @@ const submit = async () => {
 
     isSubmitting.value = true;
     try {
-        await $fetch('/api/feedback/submit', {
+        await $fetch(`${apiBase}/api/feedback/submit`, {
             method: 'POST',
+            credentials: 'include',
             body: {
                 type: form.value.type,
                 content: form.value.content,
@@ -61,7 +67,7 @@ const close = () => {
         @click="isOpen = true"
         title="反馈建议"
     >
-        <FaIcon icon="comment-alt" />
+        <FaIcon icon="comment" />
     </button>
 
     <!-- 反馈弹窗 -->
@@ -69,7 +75,7 @@ const close = () => {
         <div v-if="isOpen" class="feedback-overlay" @click.self="close">
             <div class="feedback-modal">
                 <div class="feedback-header">
-                    <h3><FaIcon icon="comment-alt" style="margin-right: 8px;" />反馈建议</h3>
+                    <h3><FaIcon icon="comment" style="margin-right: 8px;" />反馈建议</h3>
                     <button class="feedback-close" @click="close">
                         <FaIcon icon="times" />
                     </button>
@@ -324,3 +330,4 @@ const close = () => {
     font-weight: 400 !important;
 }
 </style>
+

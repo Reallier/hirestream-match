@@ -1,9 +1,13 @@
 <script setup lang="ts">
 /**
  * 匹配历史页面
+ * 
+ * 调用后端 FastAPI 服务
  */
 definePageMeta({ layout: 'default' });
 
+const config = useRuntimeConfig();
+const apiBase = config.public.apiBase;
 const { user, redirectToLogin } = useAuth();
 const records = ref<any[]>([]);
 const isLoading = ref(true);
@@ -11,8 +15,14 @@ const isLoading = ref(true);
 onMounted(async () => {
     if (!user.value) return;
     try {
-        const { records: data } = await $fetch<any>('/api/match/history');
-        records.value = data;
+        const response = await $fetch<any>(`${apiBase}/api/match/history`, {
+            credentials: 'include'
+        });
+        if (response.success) {
+            records.value = response.records || [];
+        }
+    } catch (error) {
+        console.error('Failed to load history', error);
     } finally {
         isLoading.value = false;
     }
@@ -36,15 +46,15 @@ const formatDate = (date: string) => new Date(date).toLocaleString();
             
             <div v-else class="record-card" v-for="r in records" :key="r.id">
                 <div class="record-header">
-                    <span class="score-badge">{{ r.matchScore }}分</span>
-                    <span class="date">{{ formatDate(r.createdAt) }}</span>
+                    <span class="score-badge">{{ r.match_score || 0 }}分</span>
+                    <span class="date">{{ formatDate(r.created_at) }}</span>
                 </div>
                 <div class="record-body">
                     <div class="text-preview">
-                        <strong>JD:</strong> {{ r.jdText.slice(0, 100) }}...
+                        <strong>JD:</strong> {{ r.jd_text }}
                     </div>
-                    <div class="text-preview" v-if="r.resumeFilename">
-                        <strong>简历:</strong> {{ r.resumeFilename }}
+                    <div class="text-preview" v-if="r.resume_filename">
+                        <strong>简历:</strong> {{ r.resume_filename }}
                     </div>
                 </div>
             </div>

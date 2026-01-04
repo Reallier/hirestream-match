@@ -1,9 +1,13 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 /**
  * 反馈管理页面（管理员）
+ * 
+ * 调用后端 FastAPI 服务
  */
 definePageMeta({ layout: 'default' });
 
+const config = useRuntimeConfig();
+const apiBase = config.public.apiBase;
 const { user } = useAuth();
 
 // 检查权限
@@ -39,14 +43,17 @@ const typeLabels: Record<string, string> = {
 const loadFeedbacks = async () => {
     loading.value = true;
     try {
-        const res = await $fetch<any>('/api/feedback/list', {
+        const res = await $fetch<any>(`${apiBase}/api/feedback/list`, {
+            credentials: 'include',
             params: {
                 page: page.value,
                 status: statusFilter.value || undefined
             }
         });
-        feedbacks.value = res.data;
-        total.value = res.total;
+        if (res.success) {
+            feedbacks.value = res.data;
+            total.value = res.total;
+        }
     } catch (error) {
         console.error('Load feedbacks error:', error);
     } finally {
@@ -57,8 +64,9 @@ const loadFeedbacks = async () => {
 // 更新状态
 const updateStatus = async (id: number, status: string) => {
     try {
-        await $fetch(`/api/feedback/${id}`, {
+        await $fetch(`${apiBase}/api/feedback/${id}`, {
             method: 'PATCH',
+            credentials: 'include',
             body: { status }
         });
         // 刷新列表
@@ -88,7 +96,7 @@ watch(statusFilter, () => {
 <template>
     <div class="container">
         <section class="hero">
-            <h1><FaIcon icon="comment-alt" style="margin-right: 12px;" />用户反馈管理</h1>
+            <h1><FaIcon icon="comment" style="margin-right: 12px;" />用户反馈管理</h1>
             <p class="hero-desc">查看和处理用户提交的反馈</p>
         </section>
 
@@ -320,3 +328,4 @@ watch(statusFilter, () => {
     color: var(--color-text-secondary);
 }
 </style>
+

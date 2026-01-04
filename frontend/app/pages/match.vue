@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
  * JD 匹配页面 - 从人才库中匹配候选人
+ * 
+ * 调用后端 FastAPI 服务
  */
 definePageMeta({ layout: 'default' });
 
 const { user, refreshUser, redirectToLogin } = useAuth();
+const { getCandidateCount } = useCandidates();
 
 // 状态
 const jdText = ref('');
@@ -18,8 +21,7 @@ const candidateCount = ref(0);
 const fetchCandidateCount = async () => {
     if (!user.value) return;
     try {
-        const data = await $fetch<any>('/api/candidates/count');
-        candidateCount.value = data.count;
+        candidateCount.value = await getCandidateCount();
     } catch (_error) {
         candidateCount.value = 0;
     }
@@ -64,8 +66,11 @@ const runMatch = async () => {
     matchResults.value = [];
 
     try {
-        const response = await $fetch<any>('/api/match/library', {
+        const config = useRuntimeConfig();
+        const apiBase = config.public.apiBase;
+        const response = await $fetch<any>(`${apiBase}/api/jd-match`, {
             method: 'POST',
+            credentials: 'include',
             body: {
                 jd: jdText.value,
                 top_k: topK.value

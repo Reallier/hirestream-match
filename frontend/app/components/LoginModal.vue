@@ -1,9 +1,11 @@
 <script setup lang="ts">
 /**
  * TalentAI 登录 Modal
- * 本地登录，使用官网统一认证
+ * 调用后端 FastAPI 统一认证
  */
 import { ref, watch } from 'vue';
+
+const { login: authLogin } = useAuth();
 
 const props = defineProps<{
   modelValue: boolean;
@@ -40,20 +42,14 @@ const handleLogin = async () => {
   error.value = '';
 
   try {
-    // 调用本地 API 进行登录（由后端代理到官网认证）
-    const response = await $fetch<{ success: boolean; message?: string }>('/api/auth/login', {
-      method: 'POST',
-      body: {
-        username: form.value.username,
-        password: form.value.password
-      }
-    });
+    // 调用后端 API 进行登录
+    const result = await authLogin(form.value.username, form.value.password);
 
-    if (response.success) {
+    if (result.success) {
       closeModal();
       emit('success');
     } else {
-      error.value = response.message || '登录失败';
+      error.value = result.message || '登录失败';
     }
   } catch (e: any) {
     console.error('Login error:', e);
@@ -62,6 +58,7 @@ const handleLogin = async () => {
     loading.value = false;
   }
 };
+
 
 // 点击遮罩关闭
 const handleOverlayClick = (e: MouseEvent) => {

@@ -85,9 +85,12 @@ const runMatch = async () => {
             formData.append('resume_text', resumeText.value);
         }
 
-        const response = await $fetch<any>('/api/match/instant', {
+        // 调用后端 API
+        const apiBase = config.public.apiBase;
+        const response = await $fetch<any>(`${apiBase}/api/instant-match`, {
             method: 'POST',
-            body: formData
+            body: formData,
+            credentials: 'include'
         });
 
         matchResult.value = response;

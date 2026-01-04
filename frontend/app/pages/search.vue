@@ -1,9 +1,13 @@
 <script setup lang="ts">
 /**
  * 人才搜索页面
+ * 
+ * 调用后端 FastAPI 服务
  */
 definePageMeta({ layout: 'default' });
 
+const config = useRuntimeConfig();
+const apiBase = config.public.apiBase;
 const { user, redirectToLogin } = useAuth();
 
 const query = ref('');
@@ -20,11 +24,10 @@ const performSearch = async () => {
     results.value = [];
 
     try {
-        const { results: data } = await $fetch<any>('/api/search/candidates', {
-            method: 'POST',
-            body: { query: query.value }
+        const response = await $fetch<any>(`${apiBase}/api/search?q=${encodeURIComponent(query.value)}&user_id=${user.value.id}&top_k=20`, {
+            credentials: 'include'
         });
-        results.value = data;
+        results.value = response.results || [];
     } catch (error) {
         console.error('Search failed', error);
     } finally {

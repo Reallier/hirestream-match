@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
  * 我的人才库页面
+ * 
+ * 调用后端 FastAPI 获取候选人数据
  */
 definePageMeta({ layout: 'default' });
 
 const { user, redirectToLogin } = useAuth();
+const { getCandidates, deleteCandidate: doDeleteCandidate } = useCandidates();
 
 // 状态
 const candidates = ref<any[]>([]);
@@ -19,15 +22,10 @@ const fetchCandidates = async () => {
     
     isLoading.value = true;
     try {
-        const data = await $fetch<any>('/api/candidates', {
-            params: {
-                page: currentPage.value,
-                limit: 10,
-                search: searchQuery.value
-            }
-        });
-        candidates.value = data.list;
-        totalCallback.value = data.pagination.total;
+        const skip = (currentPage.value - 1) * 10;
+        const data = await getCandidates({ skip, limit: 10 });
+        candidates.value = data.candidates;
+        totalCallback.value = data.total;
     } catch (error) {
         console.error('Failed to fetch candidates', error);
     } finally {
@@ -54,10 +52,10 @@ const handleSearch = () => {
 const deleteCandidate = async (id: number) => {
     if (!confirm('确定要删除这位候选人吗？')) return;
     
-    try {
-        await $fetch(`/api/candidates/${id}`, { method: 'DELETE' });
+    const success = await doDeleteCandidate(id);
+    if (success) {
         fetchCandidates(); // 刷新
-    } catch (error) {
+    } else {
         alert('删除失败');
     }
 };

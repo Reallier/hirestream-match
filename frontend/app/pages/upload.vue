@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /**
  * 简历上传入库页面
+ * 
+ * 调用后端 FastAPI 服务
  */
 definePageMeta({ layout: 'default' });
 
 const { user, refreshUser, redirectToLogin } = useAuth();
+const { uploadResume } = useCandidates();
 
 // 状态
 const files = ref<File[]>([]);
@@ -75,25 +78,19 @@ const uploadFiles = async () => {
     let completed = 0;
 
     for (const file of files.value) {
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
+        const result = await uploadResume(file);
 
-            const result = await $fetch<any>('/api/candidates/upload', {
-                method: 'POST',
-                body: formData
-            });
-
+        if (result.success) {
             uploadResults.value.push({
                 filename: file.name,
                 success: true,
                 candidate: result.candidate
             });
-        } catch (error: any) {
+        } else {
             uploadResults.value.push({
                 filename: file.name,
                 success: false,
-                error: error.data?.message || '上传失败'
+                error: result.message || '上传失败'
             });
         }
         

@@ -45,6 +45,9 @@ import {
     faChartBar,       // 图表
     faFolderOpen,     // 文件夹
     faCalendar,       // 日历
+    faComment,        // 💬 反馈（替代 comment-alt）
+    faLock,           // 🔒 权限
+    faInbox,          // 📥 空状态
 } from '@fortawesome/free-solid-svg-icons'
 
 // 注册图标到库
@@ -55,7 +58,8 @@ library.add(
     faGraduationCap, faStar, faChevronRight, faChevronDown, faPlus, faMinus,
     faEdit, faEye, faDownload, faCopy, faExclamationTriangle, faInfoCircle,
     faCheckCircle, faTimesCircle, faSignInAlt, faSignOutAlt, faCog,
-    faCloudUploadAlt, faFileUpload, faChartBar, faFolderOpen, faCalendar
+    faCloudUploadAlt, faFileUpload, faChartBar, faFolderOpen, faCalendar,
+    faComment, faLock, faInbox
 )
 
 export default defineNuxtPlugin((nuxtApp) => {
