@@ -105,3 +105,46 @@ Python 开发工程师 | 5年经验
 教育背景：
 2014-2018 北京大学 计算机科学与技术 本科
 """
+
+
+@pytest.fixture(scope="session")
+def auth_token(test_config, backend_client) -> str:
+    """获取认证 Token"""
+    import os
+    
+    username = os.getenv("TEST_USERNAME", "demo")
+    password = os.getenv("TEST_PASSWORD", "Test123")
+    
+    response = backend_client.post("/api/auth/login", json={
+        "username": username,
+        "password": password
+    })
+    
+    if response.status_code == 200:
+        return response.cookies.get("auth_token", "")
+    return ""
+
+
+@pytest.fixture(scope="session")
+def admin_auth_token(test_config, backend_client) -> str:
+    """获取管理员认证 Token"""
+    import os
+    
+    username = os.getenv("ADMIN_USERNAME", "admin")
+    password = os.getenv("ADMIN_PASSWORD", "admin123")
+    
+    response = backend_client.post("/api/auth/login", json={
+        "username": username,
+        "password": password
+    })
+    
+    if response.status_code == 200:
+        return response.cookies.get("auth_token", "")
+    return ""
+
+
+@pytest.fixture
+def test_user_id() -> int:
+    """测试用户 ID"""
+    import os
+    return int(os.getenv("TEST_USER_ID", "6"))
