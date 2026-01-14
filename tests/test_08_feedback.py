@@ -82,7 +82,7 @@ class TestFeedbackList:
         
         if response.status_code == 200:
             data = response.json()
-            assert "feedbacks" in data or "items" in data
+            assert "data" in data, f"响应缺少 data 字段: {data.keys()}"
             print(f"✅ 管理员获取反馈列表成功")
         elif response.status_code in [401, 403]:
             pytest.skip("无管理员权限，跳过此测试")
@@ -105,6 +105,9 @@ class TestFeedbackUpdate:
     
     def test_update_feedback_unauthorized(self, backend_client):
         """未授权更新反馈"""
+        # 确保没有携带 Cookie
+        backend_client.cookies.clear()
+        
         response = backend_client.patch("/api/feedback/1", json={
             "status": "reviewed"
         })

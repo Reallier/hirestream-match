@@ -124,6 +124,11 @@ def main():
         action="store_true",
         help="显示历史记录"
     )
+    parser.add_argument(
+        "--cov",
+        action="store_true",
+        help="生成覆盖率报告 (输出到 reports/coverage/)"
+    )
     
     args = parser.parse_args()
     
@@ -154,6 +159,14 @@ def main():
     # 并发执行
     if args.parallel > 0:
         cmd.extend(["-n", str(args.parallel)])
+    
+    # 覆盖率报告
+    if args.cov:
+        cmd.extend([
+            "--cov=../backend",
+            "--cov-report=html:reports/coverage",
+            "--cov-report=term-missing"
+        ])
     
     # 禁用 SSL 警告
     cmd.extend(["-W", "ignore::urllib3.exceptions.InsecureRequestWarning"])
