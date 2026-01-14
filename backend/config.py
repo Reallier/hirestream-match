@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     database_port: int = 5432
     database_name: str = "talentai"
     database_user: str = "talentai"
-    database_password: str  # 移除默认值，强制配置
+    database_password: str = ""  # 可选，如果使用 DATABASE_URL 可以为空
     
     # DashScope/Qwen
     dashscope_api_key: str

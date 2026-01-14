@@ -125,6 +125,71 @@ async def logout(response: Response):
     return {"success": True, "message": "已登出"}
 
 
+class VerifyTokenRequest(BaseModel):
+    """Token 验证请求"""
+    token: str
+
+
+@router.post("/verify-token")
+async def verify_token(
+    request: VerifyTokenRequest,
+    response: Response,
+    auth_db: Session = Depends(get_auth_db)
+):
+    """
+    验证 JWT Token 并设置 Cookie（用于 SSO 登录回调）
+    
+    从官网跳转过来时，URL 中携带 token，前端调用此接口验证并设置 Cookie
+    """
+    from sqlalchemy import text
+    
+    user_info = verify_jwt_token(request.token)
+    if not user_info:
+        return {"success": False, "message": "Token 无效或已过期"}
+    
+    # 查询用户信息
+    result = auth_db.execute(
+        text("SELECT id, username, name, email, avatar, balance, free_quota, role FROM users WHERE id = :user_id"),
+        {"user_id": user_info.user_id}
+    ).fetchone()
+    
+    if not result:
+        return {"success": False, "message": "用户不存在"}
+    
+    user_id, username, name, email, avatar, balance, free_quota, role = result
+    
+    # 设置 Cookie（跨子域共享）
+    response.set_cookie(
+        key="auth_token",
+        value=request.token,
+        max_age=86400 * 7,
+        path="/",
+        domain=".reallier.top",
+        secure=True,
+        httponly=True,
+        samesite="lax"
+    )
+    
+    logger.info("sso_login | user_id={} | username={}", user_id, username)
+    
+    balance_val = float(balance or 0)
+    free_quota_val = float(free_quota or 0)
+    
+    return {
+        "success": True,
+        "user": {
+            "id": user_id,
+            "name": name or username,
+            "email": email,
+            "avatar": avatar,
+            "balance": balance_val,
+            "freeQuota": free_quota_val,
+            "totalAvailable": balance_val + free_quota_val,
+            "role": role or "user"
+        }
+    }
+
+
 @router.get("/me")
 async def get_current_user(
     auth_token: Optional[str] = Cookie(None),

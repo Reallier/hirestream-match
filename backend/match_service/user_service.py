@@ -10,13 +10,22 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from database import get_db, get_db_session
-from models import User, UsageRecord, Transaction
-from auth import UserInfo
-from log import logger as log
+# 处理模块导入路径问题 - 同时支持直接运行和被外部导入
+try:
+    from .database import get_db, get_db_session
+    from .models import User, UsageRecord, Transaction
+    from .auth import UserInfo
+    from .log import logger as log
+except ImportError:
+    from database import get_db, get_db_session
+    from models import User, UsageRecord, Transaction
+    from auth import UserInfo
+    from log import logger as log
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -213,6 +222,9 @@ class UserService:
         Returns:
             DeductResult 扣费结果
         """
+        # 将 cost 转换为 Decimal 以匹配数据库字段类型
+        cost = Decimal(str(cost))
+        
         user = self.get_user(user_id)
         
         if not user:

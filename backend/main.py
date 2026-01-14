@@ -52,12 +52,11 @@ if LOGGING_ENABLED:
 
 # 配置 CORS - 白名单模式
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
-    # 生产环境
-    "https://talentai.reallier.top",
-    "https://api.talentai.reallier.top",
-    "https://intjtech.cn",
-    "https://www.intjtech.cn",
-    # 测试环境 (带端口)
+    # 生产环境 (5443 端口)
+    "https://talentai.reallier.top:5443",
+    "https://api.talentai.reallier.top:5443",
+    "https://intjtech.reallier.top:5443",
+    # 测试环境 (5443 端口)
     "https://test.talentai.reallier.top:5443",
     "https://test.api.talentai.reallier.top:5443",
     "https://test.intjtech.reallier.top:5443",
@@ -106,11 +105,15 @@ async def health_check():
 
 # ============= 即时匹配 API（来自 HireStream 融合） =============
 
+from fastapi import Request, Cookie
+
 @app.post("/api/instant-match")
 async def instant_match(
+    request: Request,
     jd: str = Form(""),
     resume: UploadFile = File(None),
-    resume_text: str = Form("")
+    resume_text: str = Form(""),
+    auth_token: Optional[str] = Cookie(None)
 ):
     """
     即时匹配（不入库）
@@ -125,6 +128,7 @@ async def instant_match(
     """
     import sys
     import os
+    import uuid
     
     # 添加 match_service 模块路径
     match_service_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'match_service'))
@@ -132,9 +136,25 @@ async def instant_match(
         sys.path.insert(0, match_service_path)
     
     from match_service.token_calculator import TokenCalculator
+    from match_service.auth import verify_jwt_token
+    from match_service.user_service import get_user_service
     
     ocr_usage = None
     final_resume_text = None
+    user_id = None
+    
+    # 验证用户身份（从 Cookie 获取 token）
+    if auth_token:
+        user_info = verify_jwt_token(auth_token)
+        if user_info:
+            user_id = user_info.user_id
+            logger.info(f"instant_match | user_id={user_id} | 已认证用户请求")
+    
+    if not user_id:
+        logger.warning("instant_match | 未登录用户请求，不进行扣费")
+    
+    # 生成请求 ID
+    request_id = f"req_{uuid.uuid4().hex[:12]}"
     
     try:
         # 早期空输入检测：JD、简历文本、文件都为空时返回友好响应
@@ -260,6 +280,16 @@ async def instant_match(
                 (r'(游行示威|政治.{0,5}(动员|集会|活动)|煽动.{0,5}对立)', '[政策敏感内容]', 'political_content'),
                 # 违法内容
                 (r'(逃税|避税.{0,5}手段|诈骗.{0,5}话术|欺诈|地下.{0,5}渠道|管制.{0,5}(药品|物品))', '[政策敏感内容]', 'illegal_content'),
+                
+                # 新增 v2.3：基础设施信息泄露防护
+                # 数据库连接字符串
+                (r'(postgres://|postgresql://|mysql://|mongodb://|redis://)', '[敏感信息已过滤]', 'db_connection_leak'),
+                (r'(数据库.{0,10}(连接|字符串|配置)|connection\s*string)', '[敏感词已过滤]', 'db_config_probe'),
+                # 内部 IP 和云元数据
+                (r'(169\.254\.169\.254|127\.0\.0\.1|localhost:\d+|0\.0\.0\.0)', '[内部地址已过滤]', 'internal_ip_leak'),
+                (r'(meta-?data|instance-?identity|iam/security)', '[敏感词已过滤]', 'cloud_metadata_probe'),
+                # 内部服务探测
+                (r'http://(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|192\.168\.\d+\.\d+)', '[内部地址已过滤]', 'internal_url_probe'),
             ]
             
             detections = []
@@ -546,6 +576,54 @@ async def instant_match(
                 result["token_usage"].get("total_tokens", 0) + 
                 result["token_usage"]["ocr_tokens"]
             )
+        
+        # ============ 用户扣费逻辑 ============
+        total_cost = result.get("token_usage", {}).get("cost", 0)
+        
+        if user_id and total_cost > 0:
+            try:
+                service = get_user_service()
+                
+                # 记录使用量
+                service.record_usage(
+                    user_id=user_id,
+                    request_id=request_id,
+                    operation="instant_match",
+                    model=result.get("token_usage", {}).get("model", "unknown"),
+                    prompt_tokens=result.get("token_usage", {}).get("prompt_tokens", 0),
+                    completion_tokens=result.get("token_usage", {}).get("completion_tokens", 0),
+                    cost=total_cost
+                )
+                
+                # 扣除余额
+                deduct_result = service.deduct_balance(
+                    user_id=user_id,
+                    cost=total_cost,
+                    reference_id=request_id,
+                    remark=f"即时匹配分析 (匹配度 {result.get('match_score', 0)}%)"
+                )
+                
+                if deduct_result.success:
+                    logger.info(f"instant_match | user_id={user_id} | cost={total_cost:.4f} | balance_after={deduct_result.balance_after:.4f}")
+                    # 在响应中添加扣费信息
+                    result["billing"] = {
+                        "charged": True,
+                        "cost": total_cost,
+                        "balance_after": deduct_result.balance_after
+                    }
+                else:
+                    logger.warning(f"instant_match | user_id={user_id} | deduct_failed | reason={deduct_result.message}")
+                    result["billing"] = {
+                        "charged": False,
+                        "reason": deduct_result.message
+                    }
+                
+                service.db.close()
+            except Exception as e:
+                logger.error(f"instant_match | billing_error | user_id={user_id} | error={str(e)}")
+                result["billing"] = {"charged": False, "error": str(e)}
+        else:
+            result["billing"] = {"charged": False, "reason": "未登录或费用为0"}
         
         return result
     

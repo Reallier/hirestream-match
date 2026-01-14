@@ -140,7 +140,8 @@ def generate_jwt_token(user_info: UserInfo, expires_in: int = 86400) -> str:
     import time
     
     payload = {
-        "user_id": user_info.user_id,
+        "id": user_info.user_id,  # 官网兼容
+        "user_id": user_info.user_id,  # TalentAI 标准
         "nickname": user_info.nickname,
         "avatar_url": user_info.avatar_url,
         "iat": int(time.time()),
