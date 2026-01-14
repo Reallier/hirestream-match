@@ -63,17 +63,27 @@ export const useAuth = () => {
     };
 
     /**
-     * 处理登录回调（从官网跳转回来时）- 保留兼容
+     * 处理登录回调（从官网跳转回来时）
+     * 使用传入的 token 调用后端验证并设置 Cookie
      */
     const handleLoginCallback = async (token: string) => {
         try {
-            // 使用 token 直接初始化
-            await initAuth();
-            return !!user.value;
+            // 调用后端 API 验证 token 并设置 Cookie
+            const response = await $fetch<{ success: boolean; user: User }>(`${apiBase}/api/auth/verify-token`, {
+                method: 'POST',
+                body: { token },
+                credentials: 'include'
+            });
+            if (response.success && response.user) {
+                user.value = response.user;
+                return true;
+            }
         } catch (error) {
             console.error('Login callback failed:', error);
         }
-        return false;
+        // 如果 verify-token 失败，尝试用普通初始化（依赖已有 Cookie）
+        await initAuth();
+        return !!user.value;
     };
 
     /**

@@ -32,9 +32,12 @@ if (typeof window !== 'undefined') {
 onMounted(async () => {
     // 检查 URL 中是否有 token 参数（从官网 hirestream-redirect 跳转过来）
     const urlToken = route.query.token as string;
+    console.log('[SSO Debug] URL token:', urlToken ? urlToken.substring(0, 50) + '...' : 'none');
     if (urlToken) {
         // 有 token，先进行登录回调处理
-        await handleLoginCallback(urlToken);
+        console.log('[SSO Debug] Calling handleLoginCallback...');
+        const success = await handleLoginCallback(urlToken);
+        console.log('[SSO Debug] handleLoginCallback result:', success);
         // 清除 URL 中的 token 参数，保留其他参数
         const query = { ...route.query };
         delete query.token;
