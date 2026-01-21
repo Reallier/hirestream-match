@@ -23,3 +23,10 @@ logs/
 
 # IDE
 .idea/
+
+# License (敏感文件，切勿提交)
+license_private_key.pem
+license_public_key.pem
+*.license
+.license
+test_license.json

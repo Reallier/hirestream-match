@@ -52,14 +52,15 @@ if LOGGING_ENABLED:
 
 # 配置 CORS - 白名单模式
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else [
-    # 生产环境 (5443 端口)
-    "https://talentai.reallier.top:5443",
-    "https://api.talentai.reallier.top:5443",
-    "https://intjtech.reallier.top:5443",
+    # 生产环境 (标准 HTTPS 端口 443)
+    "https://talentai.intjsys.com",
+    "https://api.talentai.intjsys.com",
+    "https://intjsys.com",
+    "https://www.intjsys.com",
     # 测试环境 (5443 端口)
-    "https://test.talentai.reallier.top:5443",
-    "https://test.api.talentai.reallier.top:5443",
-    "https://test.intjtech.reallier.top:5443",
+    "https://test.talentai.intjsys.com:5443",
+    "https://test.api.talentai.intjsys.com:5443",
+    "https://test.intjsys.com:5443",
     # 开发环境
     "http://localhost:3000",
     "http://localhost:5173",
@@ -80,11 +81,39 @@ app.include_router(auth_router)
 app.include_router(history_router)
 app.include_router(feedback_router)
 
+# License 授权模块 (私有化部署)
+try:
+    from license.router import router as license_router
+    from license.middleware import LicenseMiddleware, AuthMode, get_auth_mode
+    
+    app.include_router(license_router)
+    
+    # 在私有化/离线模式下启用 License 中间件
+    auth_mode = get_auth_mode()
+    if auth_mode in (AuthMode.PRIVATE, AuthMode.OFFLINE):
+        if settings.license_check_enabled:
+            app.add_middleware(LicenseMiddleware, public_key=settings.license_public_key)
+            logger.info(f"License Middleware enabled | auth_mode={auth_mode.value}")
+        else:
+            logger.warning(f"License check disabled | auth_mode={auth_mode.value}")
+    else:
+        logger.info(f"SaaS mode | License check skipped")
+except ImportError as e:
+    logger.warning(f"License module not available: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     """启动事件"""
     await init_db()
     print("✓ 数据库初始化完成")
+    
+    # 输出认证模式信息
+    try:
+        from license.middleware import get_auth_mode
+        mode = get_auth_mode()
+        print(f"✓ 认证模式: {mode.value.upper()}")
+    except ImportError:
+        print("✓ 认证模式: SAAS (默认)")
 
 
 @app.get("/")

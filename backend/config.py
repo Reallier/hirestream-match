@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     user_auth_mode: str = "mock"
     default_free_quota: float = 1.0
     
+    # License (私有化部署)
+    auth_mode: str = "saas"  # saas / private / offline
+    license_public_key: Optional[str] = None  # RSA 公钥（PEM 格式），用于验证 License
+    license_check_enabled: bool = True  # 是否启用 License 校验（仅在 private/offline 模式下生效）
+    
     # Prompts
     system_prompt: Optional[str] = None
     user_template: Optional[str] = None
