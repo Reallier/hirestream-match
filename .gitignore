@@ -23,6 +23,7 @@ logs/
 
 # IDE
 .idea/
+.kilocode/
 
 # License (敏感文件，切勿提交)
 license_private_key.pem
