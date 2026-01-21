@@ -1,0 +1,107 @@
+# ============================================
+# TalentAI 企业私有化部署 - 一键启动配置
+# ============================================
+#
+# 使用方式:
+#   docker compose -f compose.private.yml up -d
+#
+# 首次启动后访问:
+#   前端: http://localhost:3000
+#   API:  http://localhost:8000
+#
+# License 激活:
+#   curl http://localhost:8000/api/license/machine-id
+#
+# ============================================
+
+services:
+  # ===== 前端 (Nuxt 4) =====
+  frontend:
+    image: ${REGISTRY:-ccr.ccs.tencentyun.com/reallier}/talentai-frontend:${VERSION:-private-v1.0.0}
+    container_name: talentai_frontend
+    environment:
+      - NODE_ENV=production
+      - NUXT_PUBLIC_API_BASE=http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    networks:
+      - talentai
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===== 后端 API =====
+  backend:
+    image: ${REGISTRY:-ccr.ccs.tencentyun.com/reallier}/talentai-backend:${VERSION:-private-v1.0.1}
+    container_name: talentai_backend
+    environment:
+      # 数据库 (使用内置 PostgreSQL)
+      - DATABASE_URL=postgresql://talentai:${DB_PASSWORD:-TalentAI2026!}@database:5432/talentai
+      - DATABASE_PASSWORD=${DB_PASSWORD:-TalentAI2026!}
+
+      # AI 模型 (必须配置)
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - QWEN_MODEL=${QWEN_MODEL:-qwen-max}
+
+      # JWT 认证
+      - JWT_SECRET=${JWT_SECRET:-talentai-private-jwt-secret-2026}
+      - JWT_ALGORITHM=HS256
+      - USER_AUTH_MODE=jwt
+
+      # 私有化部署模式
+      - AUTH_MODE=${AUTH_MODE:-private}
+      - LICENSE_PUBLIC_KEY=${LICENSE_PUBLIC_KEY:-}
+      - LICENSE_CHECK_ENABLED=${LICENSE_CHECK_ENABLED:-false}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    networks:
+      - talentai
+    depends_on:
+      database:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+      - license:/app/.license
+      # 公钥文件挂载 (可选，也可通过环境变量配置)
+      - ./license_public_key.pem:/app/license_public_key.pem:ro
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # ===== 数据库 (PostgreSQL + pgvector) =====
+  database:
+    image: pgvector/pgvector:pg16
+    container_name: talentai_database
+    environment:
+      POSTGRES_USER: talentai
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-TalentAI2026!}
+      POSTGRES_DB: talentai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - talentai
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U talentai" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    name: talentai_postgres_data
+  uploads:
+    name: talentai_uploads
+  license:
+    name: talentai_license
+
+networks:
+  talentai:
+    name: talentai
+    driver: bridge

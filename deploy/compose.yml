@@ -7,7 +7,7 @@ services:
     container_name: talentai_frontend
     environment:
       - NODE_ENV=production
-      - NUXT_PUBLIC_API_BASE=https://api.talentai.reallier.top
+      - NUXT_PUBLIC_API_BASE=https://api.talentai.intjsys.com
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://talentai:${DATABASE_PASSWORD}@talentai-db:5432/talentai
     restart: always
@@ -16,8 +16,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
-      - "traefik.http.routers.talentai-frontend.rule=Host(`talentai.reallier.top`)"
-      - "traefik.http.routers.talentai-frontend.entrypoints=websecure"
+      - "traefik.http.routers.talentai-frontend.rule=Host(`talentai.intjsys.com`)"
+      - "traefik.http.routers.talentai-frontend.entrypoints=websecure443"
       - "traefik.http.routers.talentai-frontend.tls=true"
       - "traefik.http.routers.talentai-frontend.tls.certresolver=myresolver"
       - "traefik.http.services.talentai-frontend.loadbalancer.server.port=3000"
@@ -39,8 +39,8 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
-      - "traefik.http.routers.talentai-backend.rule=Host(`api.talentai.reallier.top`)"
-      - "traefik.http.routers.talentai-backend.entrypoints=websecure"
+      - "traefik.http.routers.talentai-backend.rule=Host(`api.talentai.intjsys.com`)"
+      - "traefik.http.routers.talentai-backend.entrypoints=websecure443"
       - "traefik.http.routers.talentai-backend.tls=true"
       - "traefik.http.routers.talentai-backend.tls.certresolver=myresolver"
       - "traefik.http.services.talentai-backend.loadbalancer.server.port=8000"
@@ -50,16 +50,22 @@ services:
     volumes:
       - uploads:/app/uploads
 
-  # ===== 数据库 =====
+  # ===== 数据库 (PostgreSQL + pgBackRest) =====
   talentai-db:
-    image: pgvector/pgvector:pg15
+    image: ccr.ccs.tencentyun.com/reallier/talentai-db-pgbackrest:latest
     container_name: talentai_db
     environment:
       POSTGRES_USER: talentai
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: talentai
+      # pgBackRest S3 凭证
+      PGBACKREST_S3_KEY: ${COS_SECRET_ID}
+      PGBACKREST_S3_KEY_SECRET: ${COS_SECRET_KEY}
+      PGBACKREST_CIPHER_PASS: ${PGBACKREST_CIPHER_PASS}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - pgbackrest_spool:/var/spool/pgbackrest
+      - pgbackrest_log:/var/log/pgbackrest
     networks:
       - traefik
     healthcheck:
@@ -71,6 +77,8 @@ services:
 
 volumes:
   postgres_data:
+  pgbackrest_spool:
+  pgbackrest_log:
   uploads:
 
 
