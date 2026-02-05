@@ -26,13 +26,13 @@ _TEST_ENV = os.getenv("TEST_ENV", "test")
 if _TEST_ENV == "prod":
     # 生产环境
     TEST_OFFICIAL_SITE = os.getenv("PROD_OFFICIAL_SITE", "https://intjtech.reallier.top:5443")
-    TEST_TALENTAI_FRONTEND = os.getenv("PROD_TALENTAI_FRONTEND", "https://talentai.reallier.top:5443")
-    TEST_TALENTAI_API = os.getenv("PROD_TALENTAI_API", "https://api.talentai.reallier.top:5443")
+    TEST_TALENTAI_FRONTEND = os.getenv("PROD_TALENTAI_FRONTEND", "https://talentai.intjsys.com")
+    TEST_TALENTAI_API = os.getenv("PROD_TALENTAI_API", "https://api.talentai.intjsys.com")
 else:
     # 测试环境（默认）
     TEST_OFFICIAL_SITE = os.getenv("TEST_OFFICIAL_SITE", "https://test.intjtech.reallier.top:5443")
-    TEST_TALENTAI_FRONTEND = os.getenv("TEST_TALENTAI_FRONTEND", "https://test.talentai.reallier.top:5443")
-    TEST_TALENTAI_API = os.getenv("TEST_TALENTAI_API", "https://test.api.talentai.reallier.top:5443")
+    TEST_TALENTAI_FRONTEND = os.getenv("TEST_TALENTAI_FRONTEND", "https://test.talentai.intjsys.com")
+    TEST_TALENTAI_API = os.getenv("TEST_TALENTAI_API", "https://test.api.talentai.intjsys.com")
 
 # 测试用户（需要在目标环境存在）
 TEST_USERNAME = os.getenv("TEST_USERNAME", "demo")

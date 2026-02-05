@@ -21,8 +21,8 @@ urllib3.disable_warnings()
 
 # 环境配置
 ENVS = {
-    "test": "https://test.api.talentai.reallier.top:5443",
-    "prod": "https://api.talentai.reallier.top:5443",
+    "test": "https://test.api.talentai.intjsys.com",
+    "prod": "https://api.talentai.intjsys.com",
     "local": "http://localhost:8000"
 }
 

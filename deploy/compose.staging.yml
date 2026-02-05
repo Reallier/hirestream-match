@@ -23,7 +23,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
-      - "traefik.http.routers.talentai-backend-test.rule=Host(`test.api.talentai.reallier.top`)"
+      - "traefik.http.routers.talentai-backend-test.rule=Host(`test.api.talentai.intjsys.com`)"
       - "traefik.http.routers.talentai-backend-test.entrypoints=websecure"
       - "traefik.http.routers.talentai-backend-test.tls=true"
       - "traefik.http.routers.talentai-backend-test.tls.certresolver=myresolver"

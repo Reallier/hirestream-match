@@ -21,13 +21,13 @@ class TestConfig:
 # 环境配置
 CONFIGS = {
     "test": TestConfig(
-        backend_url="https://test.api.talentai.reallier.top:5443",
-        frontend_url="https://test.talentai.reallier.top:5443",
+        backend_url="https://test.api.talentai.intjsys.com",
+        frontend_url="https://test.talentai.intjsys.com",
         readonly=False,
     ),
     "prod": TestConfig(
-        backend_url="https://api.talentai.reallier.top:5443",
-        frontend_url="https://talentai.reallier.top:5443",
+        backend_url="https://api.talentai.intjsys.com",
+        frontend_url="https://talentai.intjsys.com",
         readonly=True,  # 生产环境默认只读
     ),
     "local": TestConfig(

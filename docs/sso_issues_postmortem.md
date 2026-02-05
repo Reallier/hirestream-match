@@ -18,13 +18,13 @@
 ```python
 # 错误配置 - 缺少端口
 CORS_ORIGINS = [
-    "https://talentai.reallier.top",
+    "https://talentai.intjsys.com",
 ]
 
 # 正确配置 - 必须包含端口
 CORS_ORIGINS = [
-    "https://test.talentai.reallier.top:5443",
-    "https://test.api.talentai.reallier.top:5443",
+    "https://test.talentai.intjsys.com",
+    "https://test.api.talentai.intjsys.com",
 ]
 ```
 
@@ -123,10 +123,10 @@ setCookie(event, 'auth_token', token, {
 **根因**：
 ```yaml
 # 错误配置
-- NUXT_PUBLIC_API_BASE=https://test.api.talentai.reallier.top
+- NUXT_PUBLIC_API_BASE=https://test.api.talentai.intjsys.com
 
 # 正确配置
-- NUXT_PUBLIC_API_BASE=https://test.api.talentai.reallier.top:5443
+- NUXT_PUBLIC_API_BASE=https://test.api.talentai.intjsys.com
 ```
 
 ---
@@ -175,8 +175,8 @@ pytest tests/test_sso_integration.py::TestInfrastructure::test_cors_001_test_env
 | 变量 | 默认值 | 说明 |
 |:---|:---|:---|
 | `TEST_OFFICIAL_SITE` | https://test.intjtech.reallier.top:5443 | 测试环境官网 |
-| `TEST_TALENTAI_FRONTEND` | https://test.talentai.reallier.top:5443 | 测试环境前端 |
-| `TEST_TALENTAI_API` | https://test.api.talentai.reallier.top:5443 | 测试环境 API |
+| `TEST_TALENTAI_FRONTEND` | https://test.talentai.intjsys.com | 测试环境前端 |
+| `TEST_TALENTAI_API` | https://test.api.talentai.intjsys.com | 测试环境 API |
 | `TEST_USERNAME` | demo | 测试用户 |
 | `TEST_PASSWORD` | Test123 | 测试密码 |
 | `JWT_SECRET` | (见配置) | JWT 签名密钥 |

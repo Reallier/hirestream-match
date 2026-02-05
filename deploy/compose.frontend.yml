@@ -10,7 +10,7 @@ services:
     container_name: talentai_frontend
     environment:
       - NODE_ENV=production
-      - NUXT_PUBLIC_API_BASE=https://test.api.talentai.reallier.top
+      - NUXT_PUBLIC_API_BASE=https://test.api.talentai.intjsys.com
       - JWT_SECRET=${JWT_SECRET}
       - DATABASE_URL=postgresql://talentai:talentai123@talentai_db:5432/intjtech_users
     restart: always
@@ -19,7 +19,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik"
-      - "traefik.http.routers.talentai-frontend.rule=Host(`test.talentai.reallier.top`)"
+      - "traefik.http.routers.talentai-frontend.rule=Host(`test.talentai.intjsys.com`)"
       - "traefik.http.routers.talentai-frontend.entrypoints=websecure"
       - "traefik.http.routers.talentai-frontend.tls=true"
       - "traefik.http.routers.talentai-frontend.tls.certresolver=myresolver"

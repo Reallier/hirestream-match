@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 
 # 配置
-BACKEND_URL = "https://api.talentai.reallier.top:5443"
+BACKEND_URL = "https://api.talentai.intjsys.com"
 ENDPOINT = "/api/instant-match"
 
 # 测试数据

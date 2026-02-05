@@ -135,8 +135,8 @@ echo "  部署完成！环境: $ENV"
 echo "========================================="
 echo ""
 if [ "$ENV" == "staging" ]; then
-    echo "测试服: https://test.api.talentai.reallier.top:5443"
+    echo "测试服: https://test.api.talentai.intjsys.com"
 else
-    echo "生产服: https://talentai.reallier.top"
+    echo "生产服: https://talentai.intjsys.com"
 fi
 
