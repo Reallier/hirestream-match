@@ -1,0 +1,49 @@
+name: Uptime Monitor (TalentAI)
+
+# 每 5 分钟检测一次
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:  # 允许手动触发
+
+env:
+  HEALTH_CHECK_URL: https://api.talentai.intjsys.com/health
+  ADMIN_EMAIL: icey123580@gmail.com
+  SERVICE_NAME: TalentAI API
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check service health
+        id: health
+        run: |
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "$HEALTH_CHECK_URL" || echo "000")
+          echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
+          
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Health check failed! HTTP Code: $HTTP_CODE"
+            echo "status=failed" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Health check passed"
+            echo "status=ok" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send alert email on failure
+        if: steps.health.outputs.status == 'failed'
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          TIMESTAMP=$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')
+          
+          curl -X POST 'https://api.resend.com/emails' \
+            -H "Authorization: Bearer $RESEND_API_KEY" \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"from\": \"简序智能告警 <noreply@auth.intjsys.com>\",
+              \"to\": \"$ADMIN_EMAIL\",
+              \"subject\": \"🚨 服务宕机告警: $SERVICE_NAME\",
+              \"html\": \"<div style='font-family: sans-serif; padding: 20px;'><h2 style='color: #dc2626;'>⚠️ 服务异常通知</h2><p><strong>服务名称:</strong> $SERVICE_NAME</p><p><strong>检测时间:</strong> $TIMESTAMP</p><p><strong>HTTP 状态码:</strong> ${{ steps.health.outputs.http_code }}</p><p><strong>检测地址:</strong> $HEALTH_CHECK_URL</p><hr><p style='color: #666; font-size: 12px;'>此邮件由 GitHub Actions 自动发送，请尽快检查服务状态。</p></div>\"
+            }"
+          
+          echo "📧 Alert email sent to $ADMIN_EMAIL"

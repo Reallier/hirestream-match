@@ -50,3 +50,23 @@ def get_auth_db():
 async def init_db():
     """初始化数据库（创建表）"""
     Base.metadata.create_all(bind=engine)
+    
+    # 执行数据库健康检查
+    try:
+        import sys
+        import os
+        # 添加 match_service 到路径
+        match_service_path = os.path.join(os.path.dirname(__file__), 'match_service')
+        if match_service_path not in sys.path:
+            sys.path.insert(0, match_service_path)
+        
+        from db_health import check_database_health
+        is_healthy = check_database_health(engine, fail_on_error=False)
+        if is_healthy:
+            print("✅ 数据库 Schema 检查通过")
+        else:
+            print("⚠️ 数据库 Schema 存在问题，请检查日志")
+    except ImportError as e:
+        print(f"⚠️ 数据库健康检查模块未找到，跳过 Schema 验证: {e}")
+    except Exception as e:
+        print(f"⚠️ 数据库健康检查失败: {e}")

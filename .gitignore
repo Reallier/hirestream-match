@@ -9,10 +9,30 @@ wheels/
 # Virtual environments
 .venv
 
-# 环境配置（包含敏感信息）
+# ============ 敏感文件（绝对不要提交）============
+# 环境配置
 .env
+.env.local
+.env.*.local
+!.env.example
 
-# 提示词
+# 密钥和证书
+*.pem
+*.key
+*.p12
+*.pfx
+license_private_key.pem
+license_public_key.pem
+*.license
+.license
+test_license.json
+
+# API Keys 和 Secrets
+*secret*
+*credential*
+*.secrets
+
+# 提示词（可能包含敏感业务逻辑）
 prompts.py
 
 # 数据目录（SQLite 数据库）
@@ -20,14 +40,9 @@ data/
 
 # 日志文件
 logs/
+*.log
 
 # IDE
 .idea/
 .kilocode/
-
-# License (敏感文件，切勿提交)
-license_private_key.pem
-license_public_key.pem
-*.license
-.license
-test_license.json
+.vscode/

@@ -128,6 +128,15 @@ const formatMoney = (amount: number) => amount.toFixed(2);
                         @dragleave="handleDragLeave"
                         @drop="handleDrop"
                     >
+                        <!-- 删除按钮 -->
+                        <button 
+                            v-if="resumeFile" 
+                            class="file-remove-btn" 
+                            @click.stop="resumeFile = null"
+                            title="移除文件"
+                        >
+                            <FaIcon icon="times" />
+                        </button>
                         <template v-if="resumeFile">
                             <p style="font-size: 32px; color: var(--color-success);"><FaIcon icon="check-circle" /></p>
                             <p style="font-weight: 500; margin-top: 8px;">{{ resumeFile.name }}</p>
@@ -337,4 +346,33 @@ const formatMoney = (amount: number) => amount.toFixed(2);
 .login-hint { color: var(--color-text-muted); }
 .login-link { color: var(--color-primary); text-decoration: none; font-weight: 500; }
 .login-link:hover { text-decoration: underline; }
+
+/* 文件删除按钮 */
+.upload-area {
+    position: relative;
+}
+
+.file-remove-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.1);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    transition: all 0.2s;
+    z-index: 10;
+}
+
+.file-remove-btn:hover {
+    background: var(--color-danger);
+    color: white;
+}
 </style>

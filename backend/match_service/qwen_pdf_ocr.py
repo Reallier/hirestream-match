@@ -12,9 +12,14 @@ import dashscope
 
 
 class QwenPDFOCR:
+    # 优化提示词：明确要求返回纯文本，不要坐标/边界框格式
     DEFAULT_HINT = (
-        "只做逐字转录，不要总结、不翻译、不改写；"
-        "按自然阅读顺序输出文本，保留换行和项目符号；无法辨认处用 [UNREADABLE]。"
+        "请识别图片中的所有文字内容，直接输出纯文本。"
+        "要求：1. 只输出文字内容，不要输出坐标、边界框或位置信息；"
+        "2. 按从上到下、从左到右的阅读顺序输出；"
+        "3. 保留段落换行和项目符号；"
+        "4. 不要总结或改写原文；"
+        "5. 无法识别的文字用 [?] 标记。"
     )
 
     def __init__(
@@ -157,34 +162,95 @@ class QwenPDFOCR:
         
         return resp, token_usage
 
+    # ------------------ 坐标格式后处理 ------------------
+
+    @staticmethod
+    def _extract_text_from_coordinate_format(text: str) -> str | None:
+        """
+        尝试从坐标格式中提取纯文本。
+        格式示例: "100,32,23,33,90,自" -> "自"
+        或: "164,30,25,129,90,项目经历" -> "项目经历"
+        """
+        if not text:
+            return None
+        
+        lines = text.strip().split("\n")
+        extracted = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # 检测是否是坐标格式 (至少有4个逗号分隔的数字开头)
+            parts = line.split(",")
+            if len(parts) >= 5:
+                # 检查前几个部分是否都是数字
+                try:
+                    # 检查前4个是否是数字（坐标）
+                    is_coord_format = all(p.strip().isdigit() for p in parts[:4])
+                    if is_coord_format:
+                        # 最后一个部分是文本
+                        text_part = ",".join(parts[5:]) if len(parts) > 5 else (parts[-1] if not parts[-1].strip().isdigit() else "")
+                        if text_part and not text_part.strip().isdigit():
+                            extracted.append(text_part.strip())
+                        continue
+                except:
+                    pass
+            
+            # 不是坐标格式，保留原文
+            extracted.append(line)
+        
+        if extracted:
+            result = "\n".join(extracted)
+            if len(result) > 10:  # 至少有一些有意义的文本
+                return result
+        return None
+
     # ------------------ 响应解析 ------------------
 
     def _parse_resp(self, resp):
-        """稳健解析 Qwen 多模态返回"""
+        """稳健解析 Qwen 多模态返回 - 增强版"""
+        # 记录状态码等元信息
         for k in ("status_code", "code", "message"):
             v = getattr(resp, k, None)
             if v is not None:
-                logger.info(f"    {k} =", v)
                 logger.info(f"    {k} = {v}")
 
         out = getattr(resp, "output", {}) or {}
-        logger.info(">>> resp.output keys:", list(out.keys()) if isinstance(out, dict) else type(out))
         logger.info(f">>> resp.output keys: {list(out.keys()) if isinstance(out, dict) else type(out)}")
 
+        # 方案1: 标准 choices 格式
         choices = out.get("choices") or out.get("outputs") or []
         if choices:
             msg = choices[0].get("message") or choices[0].get("messages", [{}])[0]
             content = msg.get("content", [])
             logger.info(f">>> choices[0].content 类型: {type(content)}")
+            
             if isinstance(content, list):
-                texts = [c.get("text", "") for c in content if isinstance(c, dict) and "text" in c]
+                texts = []
+                for c in content:
+                    if isinstance(c, dict):
+                        # 标准 text 字段
+                        if "text" in c:
+                            texts.append(c["text"])
+                        # 某些版本返回 box 格式: {"box": [x,y,w,h], "text": "内容"}
+                        elif "box" in c and isinstance(c.get("box"), list):
+                            # 有些响应把文本放在其他字段
+                            box_text = c.get("text") or c.get("content") or c.get("label") or ""
+                            if box_text:
+                                texts.append(str(box_text))
+                    elif isinstance(c, str) and c.strip():
+                        texts.append(c)
+                
                 text = "\n".join([t for t in texts if t]).strip()
                 if text:
-                    logger.info(">>> 从 choices 解析成功，长度:", len(text))
+                    logger.info(f">>> 从 choices 解析成功，长度: {len(text)}")
                     return text
             elif isinstance(content, str) and content.strip():
                 return content.strip()
 
+        # 方案2: output_text 属性
         ot = None
         try:
             ot = getattr(resp, "output_text", None)
@@ -194,13 +260,39 @@ class QwenPDFOCR:
             logger.info(">>> 使用 resp.output_text 解析成功")
             return str(ot).strip()
 
-        # 打印原始结构帮助诊断
+        # 方案3: 尝试从原始 dict 提取
         try:
             raw = resp.to_dict() if hasattr(resp, "to_dict") else getattr(resp, "__dict__", {})
-            logger.info(">>> 原始响应（截断 2000 字）：")
-            logger.info(json.dumps(raw, ensure_ascii=False, indent=2)[:2000])
-        except Exception:
-            logger.info(">>> 无法序列化 resp，直接打印对象：", resp)
+            
+            # 深度搜索 text 字段
+            def find_text_deep(obj, depth=0):
+                if depth > 5:
+                    return []
+                texts = []
+                if isinstance(obj, dict):
+                    # 直接的 text 字段
+                    if "text" in obj and isinstance(obj["text"], str):
+                        texts.append(obj["text"])
+                    # 遍历所有值
+                    for v in obj.values():
+                        texts.extend(find_text_deep(v, depth + 1))
+                elif isinstance(obj, list):
+                    for item in obj:
+                        texts.extend(find_text_deep(item, depth + 1))
+                return texts
+            
+            found_texts = find_text_deep(raw)
+            if found_texts:
+                combined = "\n".join([t for t in found_texts if t and len(t) > 2])
+                if combined and len(combined) > 10:
+                    logger.info(f">>> 深度搜索解析成功，找到 {len(found_texts)} 段文本")
+                    return combined
+            
+            # 仅记录元信息，不记录原始响应内容（防止简历隐私泄露到日志）
+            raw_keys = list(raw.keys()) if isinstance(raw, dict) else str(type(raw))
+            logger.warning(f">>> OCR 解析失败 | 响应结构: {raw_keys} | 请检查 API 返回格式")
+        except Exception as e:
+            logger.warning(f">>> 无法序列化 resp: {e}")
 
         return None
 
@@ -366,5 +458,28 @@ class QwenPDFOCR:
             total_token_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
             total_token_usage["completion_tokens"] += usage.get("completion_tokens", 0)
 
-        return "\n".join(lines), total_token_usage
+        raw_result = "\n".join(lines)
+        
+        # --- 阶段4：后处理 - 检测并修复坐标格式问题 ---
+        # 如果结果包含 OCR 失败标记或看起来像坐标格式，尝试提取纯文本
+        if "[OCR 失败" in raw_result or self._looks_like_coordinate_format(raw_result):
+            logger.info(">>> 检测到 OCR 失败或坐标格式，尝试后处理提取文本...")
+            extracted = self._extract_text_from_coordinate_format(raw_result)
+            if extracted and len(extracted) > 50:  # 至少提取出 50 字符的有效内容
+                logger.info(f">>> 坐标格式后处理成功，提取文本长度: {len(extracted)}")
+                return extracted, total_token_usage
+            else:
+                logger.warning(f">>> 坐标格式后处理失败或内容过少，返回原始结果")
+        
+        return raw_result, total_token_usage
+    
+    @staticmethod
+    def _looks_like_coordinate_format(text: str) -> bool:
+        """检测文本是否看起来像坐标格式"""
+        import re
+        # 坐标格式模式: 多行 "数字,数字,数字,..." 开头
+        coord_pattern = re.compile(r'^\d+,\d+,\d+,\d+', re.MULTILINE)
+        matches = coord_pattern.findall(text)
+        # 如果超过 3 行匹配坐标格式，认为是坐标格式
+        return len(matches) >= 3
 

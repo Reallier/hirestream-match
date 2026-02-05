@@ -98,7 +98,7 @@ const formatMoney = (amount: number) => {
                             >
                                 <FaIcon :icon="item.icon" class="nav-icon" />
                                 <span>{{ item.label }}</span>
-                                <span class="coming-soon-badge">即将上线</span>
+                                <span class="coming-soon-badge">开发中</span>
                             </div>
                         </template>
                     </nav>

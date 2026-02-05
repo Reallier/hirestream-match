@@ -1,4 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Header
+from deps import get_current_user, verify_admin_api_key
+from match_service.auth import UserInfo
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -139,10 +141,10 @@ from fastapi import Request, Cookie
 @app.post("/api/instant-match")
 async def instant_match(
     request: Request,
+    current_user: UserInfo = Depends(get_current_user),  # 强制登录，防止匿名刷接口
     jd: str = Form(""),
     resume: UploadFile = File(None),
-    resume_text: str = Form(""),
-    auth_token: Optional[str] = Cookie(None)
+    resume_text: str = Form("")
 ):
     """
     即时匹配（不入库）
@@ -165,22 +167,14 @@ async def instant_match(
         sys.path.insert(0, match_service_path)
     
     from match_service.token_calculator import TokenCalculator
-    from match_service.auth import verify_jwt_token
     from match_service.user_service import get_user_service
     
     ocr_usage = None
     final_resume_text = None
-    user_id = None
     
-    # 验证用户身份（从 Cookie 获取 token）
-    if auth_token:
-        user_info = verify_jwt_token(auth_token)
-        if user_info:
-            user_id = user_info.user_id
-            logger.info(f"instant_match | user_id={user_id} | 已认证用户请求")
-    
-    if not user_id:
-        logger.warning("instant_match | 未登录用户请求，不进行扣费")
+    # 用户已通过 get_current_user 依赖验证，直接获取 user_id
+    user_id = current_user.user_id
+    logger.info(f"instant_match | user_id={user_id} | 已认证用户请求")
     
     # 生成请求 ID
     request_id = f"req_{uuid.uuid4().hex[:12]}"
@@ -212,8 +206,22 @@ async def instant_match(
                     detail="不支持的文件格式。支持 PDF 和常见图片格式（JPG/PNG/GIF/WEBP）"
                 )
             
-            # 读取文件内容
-            file_data = await resume.read()
+            # 分块读取文件内容（限制最大大小，防止 DoS）
+            MAX_FILE_SIZE = settings.max_file_size_mb * 1024 * 1024
+            chunks = []
+            total_size = 0
+            while True:
+                chunk = await resume.read(1024 * 1024)  # 1MB chunks
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                if total_size > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"文件大小超过限制 ({settings.max_file_size_mb}MB)"
+                    )
+                chunks.append(chunk)
+            file_data = b"".join(chunks)
             
             # OCR 提取简历文本
             from match_service.qwen_pdf_ocr import QwenPDFOCR
@@ -227,10 +235,36 @@ async def instant_match(
             else:
                 final_resume_text, ocr_usage = QwenPDFOCR.from_image_bytes(file_data, api_key=api_key, verbose=False)
             
-            print(f"[instant-match] OCR 完成，文本长度: {len(final_resume_text) if final_resume_text else 0}")
+            # OCR 结果验证
+            ocr_text_len = len(final_resume_text) if final_resume_text else 0
+            logger.info(f"instant_match | OCR 完成 | 文本长度: {ocr_text_len}")
+            print(f"[instant-match] OCR 完成，文本长度: {ocr_text_len}")
             
-            if not final_resume_text or final_resume_text.startswith("["):
-                raise HTTPException(status_code=400, detail="无法识别简历内容，请确保文件清晰可读")
+            # 检测 OCR 失败模式
+            ocr_failed = False
+            ocr_fail_reason = ""
+            
+            if not final_resume_text:
+                ocr_failed = True
+                ocr_fail_reason = "OCR 返回空内容"
+            elif final_resume_text.startswith("["):
+                ocr_failed = True
+                ocr_fail_reason = f"OCR 返回错误: {final_resume_text[:100]}"
+            elif ocr_text_len < 50:
+                # 有效简历至少应该有 50 个字符
+                ocr_failed = True
+                ocr_fail_reason = f"OCR 提取内容过少 ({ocr_text_len} 字符)"
+            elif "UNREADABLE" in final_resume_text and final_resume_text.count("UNREADABLE") > 3:
+                # 如果大量内容无法识别
+                ocr_failed = True
+                ocr_fail_reason = f"OCR 识别质量差 ({final_resume_text.count('UNREADABLE')} 处无法识别)"
+            elif "OCR 失败" in final_resume_text or "API调用失败" in final_resume_text:
+                ocr_failed = True
+                ocr_fail_reason = f"OCR 内部错误: {final_resume_text[:100]}"
+            
+            if ocr_failed:
+                logger.warning(f"instant_match | OCR 失败 | reason={ocr_fail_reason}")
+                raise HTTPException(status_code=400, detail=f"无法识别简历内容: {ocr_fail_reason}。请确保文件清晰可读或尝试使用文本输入。")
         else:
             # 没有简历内容，设为空字符串，后续统一处理
             final_resume_text = ""
@@ -520,6 +554,11 @@ async def instant_match(
         
         content = resp.choices[0].message.content or ""
         
+        # ============ 详细日志 - 便于排查偶发失败 ============
+        logger.info(f"instant_match | request_id={request_id} | model={model}")
+        logger.info(f"instant_match | resume_len={len(safe_resume)} | jd_len={len(safe_jd)}")
+        logger.info(f"instant_match | llm_response_len={len(content)}")
+        
         # 解析 JSON
         def extract_json(text):
             # 尝试提取 JSON 代码块
@@ -536,6 +575,27 @@ async def instant_match(
         
         json_str = extract_json(content)
         result = json.loads(json_str)
+        
+        # 记录匹配结果详情
+        match_score = result.get("match_score", -1)
+        risks = result.get("risks", [])
+        logger.info(f"instant_match | request_id={request_id} | match_score={match_score}")
+        
+        # ============ 检测无效结果（LLM 判断无法解析）============
+        parse_failure_keywords = [
+            "无法解析", "无法识别", "无有效", "OCR失败", "无法验证",
+            "无法评估", "信息不足", "内容为空", "无法读取", "乱码"
+        ]
+        
+        is_parse_failure = match_score == 0 and any(
+            any(keyword in str(risk) for keyword in parse_failure_keywords)
+            for risk in risks if risk
+        )
+        
+        if is_parse_failure:
+            logger.warning(f"instant_match | request_id={request_id} | PARSE_FAILURE_DETECTED | risks={risks[:2]}")
+            # 标记为解析失败，后续扣费逻辑会根据此标记决定是否收费
+            result["_parse_failure"] = True
         
         # ============ 分数惩罚机制 ============
         # 如果检测到 JD 注入尝试，强制限制分数上限
@@ -609,11 +669,18 @@ async def instant_match(
         # ============ 用户扣费逻辑 ============
         total_cost = result.get("token_usage", {}).get("cost", 0)
         
-        if user_id and total_cost > 0:
+        # 如果检测到解析失败，不收费（这是服务质量问题，不应由用户承担）
+        if result.get("_parse_failure"):
+            logger.info(f"instant_match | user_id={user_id} | SKIP_BILLING | reason=parse_failure")
+            result["billing"] = {
+                "charged": False,
+                "reason": "解析失败，本次不收费"
+            }
+        elif user_id and total_cost > 0:
             try:
                 service = get_user_service()
                 
-                # 记录使用量
+                # 记录使用量（即使是解析失败也记录，便于统计）
                 service.record_usage(
                     user_id=user_id,
                     request_id=request_id,
@@ -669,9 +736,10 @@ async def instant_match(
 @app.post("/api/match", response_model=MatchResponse)
 async def match_candidates(
     request: MatchRequest,
-    user_id: int,
+    user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    user_id = user.user_id
     """
     JD 匹配候选人（按用户隔离）
     
@@ -697,10 +765,11 @@ async def match_candidates(
 @app.get("/api/search", response_model=SearchResponse)
 async def search_candidates(
     q: str,
-    user_id: int,
+    user: UserInfo = Depends(get_current_user),
     top_k: int = 20,
     db: Session = Depends(get_db)
 ):
+    user_id = user.user_id
     """
     关键词搜索候选人（按用户隔离）
     
@@ -731,9 +800,10 @@ async def search_candidates(
 async def ingest_resume(
     file: UploadFile = File(...),
     source: str = Form("upload"),
-    user_id: int = Form(...),
+    user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    user_id = user.user_id
     """
     上传并入库简历
     
@@ -790,9 +860,10 @@ async def ingest_resume(
 @app.get("/api/candidates/{candidate_id}", response_model=CandidateDetail)
 async def get_candidate(
     candidate_id: int,
-    user_id: int,
+    user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    user_id = user.user_id
     """
     获取候选人详细信息（含用户权限校验）
     
@@ -885,12 +956,13 @@ async def get_candidate(
 
 @app.get("/api/candidates", response_model=list)
 async def list_candidates(
-    user_id: int,
+    user: UserInfo = Depends(get_current_user),
     skip: int = 0,
     limit: int = 20,
     status: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
+    user_id = user.user_id
     """
     列出候选人（按用户隔离）
     
@@ -929,19 +1001,15 @@ async def list_candidates(
 @app.post("/api/reindex", response_model=ReindexResponse)
 async def reindex_candidates(
     request: ReindexRequest,
-    x_api_key: str = None,
+    _: str = Depends(verify_admin_api_key),
     db: Session = Depends(get_db)
 ):
     """
     重建索引（需要 API Key 校验）
     
     可以指定候选人ID列表或时间范围
-    ⚠️ 此 API 仅限内部系统调用
+    ⚠️ 此 API 仅限内部系统调用，API Key 从 X-API-Key 请求头获取
     """
-    # 校验 API Key（从环境变量获取）
-    expected_key = os.environ.get("ADMIN_API_KEY", "")
-    if not expected_key or x_api_key != expected_key:
-        raise HTTPException(status_code=403, detail="此 API 需要有效的管理员 API Key")
     
     try:
         indexing_service = IndexingService(db)
@@ -970,9 +1038,10 @@ async def reindex_candidates(
 @app.delete("/api/candidates/{candidate_id}")
 async def delete_candidate(
     candidate_id: int,
-    user_id: int,
+    user: UserInfo = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    user_id = user.user_id
     """
     删除候选人（含用户权限校验）
     
@@ -1013,8 +1082,9 @@ async def delete_candidate(
 # ============= 统计 API =============
 
 @app.get("/api/stats")
-async def get_stats(user_id: int, db: Session = Depends(get_db)):
+async def get_stats(user: UserInfo = Depends(get_current_user), db: Session = Depends(get_db)):
     """获取当前用户的统计信息"""
+    user_id = user.user_id
     from models import Resume, Experience
     from sqlalchemy import func
     

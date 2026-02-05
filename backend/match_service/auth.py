@@ -126,13 +126,14 @@ def authenticate_user(
         return None
 
 
-def generate_jwt_token(user_info: UserInfo, expires_in: int = 86400) -> str:
+def generate_jwt_token(user_info: UserInfo, expires_in: int = 86400, email: str = None) -> str:
     """
     生成 JWT Token（用于测试或官网集成）
     
     Args:
         user_info: 用户信息
         expires_in: 过期时间（秒），默认 24 小时
+        email: 可选的邮箱地址
         
     Returns:
         JWT Token 字符串
@@ -143,7 +144,11 @@ def generate_jwt_token(user_info: UserInfo, expires_in: int = 86400) -> str:
         "id": user_info.user_id,  # 官网兼容
         "user_id": user_info.user_id,  # TalentAI 标准
         "nickname": user_info.nickname,
+        "name": user_info.nickname,  # 官网兼容
         "avatar_url": user_info.avatar_url,
+        "avatar": user_info.avatar_url,  # 官网兼容
+        "email": email,  # 官网兼容
+        "type": "access",  # 官网兼容 - 关键字段！
         "iat": int(time.time()),
         "exp": int(time.time()) + expires_in
     }

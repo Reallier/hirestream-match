@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # ===== 前端 (Nuxt 4) =====
   talentai-frontend:
-    image: ccr.ccs.tencentyun.com/reallier/talentai-frontend:latest
+    image: ccr.ccs.tencentyun.com/reallier/talentai-frontend:prod
     container_name: talentai_frontend
     environment:
       - NODE_ENV=production
@@ -26,12 +26,15 @@ services:
 
   # ===== 后端 API =====
   talentai-backend:
-    image: ccr.ccs.tencentyun.com/reallier/talentai-backend:latest
+    image: ccr.ccs.tencentyun.com/reallier/talentai-backend:prod
     container_name: talentai_backend
     environment:
       - DATABASE_URL=postgresql://talentai:${DATABASE_PASSWORD}@talentai-db:5432/talentai
       - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - ADMIN_EMAIL=icey123580@gmail.com
       - ENVIRONMENT=production
     restart: always
     networks:
@@ -49,6 +52,7 @@ services:
         condition: service_healthy
     volumes:
       - uploads:/app/uploads
+      - /data/app-stack/talentai/license_private_key.pem:/app/license_private_key.pem:ro
 
   # ===== 数据库 (PostgreSQL + pgBackRest) =====
   talentai-db:

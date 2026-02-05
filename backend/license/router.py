@@ -157,3 +157,138 @@ async def deactivate_license():
         "success": True,
         "message": "License 已注销。如需迁移到新服务器，请使用新机器的 Machine ID 重新申请授权。"
     }
+
+
+# ============ Admin API: License 生成 ============
+
+from .models import LicenseGenerateRequest, LicenseGenerateResponse
+
+
+def get_private_key() -> Optional[str]:
+    """
+    获取 License 私钥 (仅限 Admin 使用)
+    
+    优先级：
+    1. 环境变量 LICENSE_PRIVATE_KEY
+    2. 文件 /app/license_private_key.pem
+    """
+    import os
+    from pathlib import Path
+    
+    # 1. 环境变量
+    private_key = os.getenv("LICENSE_PRIVATE_KEY")
+    if private_key:
+        return private_key.replace("\\n", "\n")
+    
+    # 2. 文件读取
+    key_paths = [
+        Path("/app/license_private_key.pem"),
+        Path("license_private_key.pem"),
+        Path("/data/license_private_key.pem"),
+    ]
+    for key_path in key_paths:
+        if key_path.exists():
+            return key_path.read_text()
+    
+    return None
+
+
+def generate_license_key(
+    private_key: str,
+    machine_id: str,
+    customer: str,
+    edition: str = "professional",
+    max_users: int = None,
+    max_concurrency: int = None,
+    days: int = 365,
+) -> tuple:
+    """
+    生成 License Key (核心逻辑)
+    
+    Returns:
+        (license_key, payload_dict)
+    """
+    import jwt
+    from datetime import timedelta
+    
+    # 版本默认配置
+    edition_defaults = {
+        "standard": {"max_users": 50, "max_concurrency": 5, "features": ["instant_match", "talent_pool"]},
+        "professional": {"max_users": 200, "max_concurrency": 20, "features": ["instant_match", "talent_pool", "jd_search", "api_access"]},
+        "enterprise": {"max_users": 1000, "max_concurrency": 50, "features": ["instant_match", "talent_pool", "jd_search", "api_access", "custom_model", "sso"]},
+        "flagship": {"max_users": 99999, "max_concurrency": 100, "features": ["instant_match", "talent_pool", "jd_search", "api_access", "custom_model", "sso", "source_code"]},
+    }
+    
+    defaults = edition_defaults.get(edition, edition_defaults["professional"])
+    
+    if max_users is None:
+        max_users = defaults["max_users"]
+    if max_concurrency is None:
+        max_concurrency = defaults["max_concurrency"]
+    
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(days=days)
+    lic_id = f"LIC-{now.strftime('%Y%m%d')}-{machine_id[:8].upper()}"
+    
+    payload = {
+        "lic_id": lic_id,
+        "customer": customer,
+        "machine_id": machine_id,
+        "edition": edition,
+        "max_users": max_users,
+        "max_concurrency": max_concurrency,
+        "features": defaults["features"],
+        "issued_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "iat": int(now.timestamp()),
+        "exp": int(expires_at.timestamp()),
+    }
+    
+    token = jwt.encode(payload, private_key, algorithm="RS256")
+    return token, payload
+
+
+@router.post("/generate", response_model=LicenseGenerateResponse)
+async def generate_license_endpoint(request: LicenseGenerateRequest):
+    """
+    生成 License (Admin API)
+    
+    ⚠️ 仅限管理员使用。需要服务器配置私钥。
+    
+    生成指定客户和机器的 License Key，可选发送邮件通知。
+    """
+    # 获取私钥
+    private_key = get_private_key()
+    
+    if not private_key:
+        raise HTTPException(
+            status_code=500,
+            detail="服务器未配置 License 私钥，无法生成授权。请在环境变量或文件中配置 LICENSE_PRIVATE_KEY。"
+        )
+    
+    try:
+        # 生成 License
+        license_key, payload = generate_license_key(
+            private_key=private_key,
+            machine_id=request.machine_id,
+            customer=request.customer,
+            edition=request.edition.value if hasattr(request.edition, 'value') else request.edition,
+            max_users=request.max_users,
+            max_concurrency=request.max_concurrency,
+            days=request.days,
+        )
+        
+        return LicenseGenerateResponse(
+            success=True,
+            message=f"License 生成成功！客户: {request.customer}, 版本: {request.edition}, 有效期: {request.days} 天",
+            license_key=license_key,
+            lic_id=payload["lic_id"],
+            expires_at=datetime.fromisoformat(payload["expires_at"]),
+            email_sent=False,  # 邮件发送由官网 Admin 处理
+        )
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"License 生成失败: {str(e)}"
+        )

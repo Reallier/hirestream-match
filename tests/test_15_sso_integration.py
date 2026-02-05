@@ -40,7 +40,9 @@ TEST_PASSWORD = os.getenv("TEST_PASSWORD", "Test123")
 TEST_USER_ID = int(os.getenv("TEST_USER_ID", "5"))  # 生产环境使用 user_id=5
 
 # JWT 配置
-JWT_SECRET = os.getenv("JWT_SECRET", "5Sf4IrUfOLVQ7ul46zfg_w-bHHHu_Y67iqscKTw6UM0")
+JWT_SECRET = os.getenv("JWT_SECRET")  # 必须从环境变量获取，切勿硬编码
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET 环境变量未设置，请在运行测试前配置")
 JWT_ALGORITHM = "HS256"
 
 

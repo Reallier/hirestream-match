@@ -62,3 +62,24 @@ class LicenseActivateResponse(BaseModel):
     success: bool = Field(..., description="激活是否成功")
     message: str = Field(..., description="结果消息")
     status: Optional[LicenseStatus] = Field(None, description="激活后的状态")
+
+
+class LicenseGenerateRequest(BaseModel):
+    """License 生成请求 (Admin API)"""
+    customer: str = Field(..., description="客户名称")
+    machine_id: str = Field(..., description="客户服务器机器指纹")
+    edition: LicenseEdition = Field(default=LicenseEdition.PROFESSIONAL, description="授权版本")
+    days: int = Field(default=365, description="有效天数")
+    max_users: Optional[int] = Field(None, description="用户数上限 (不填则使用版本默认值)")
+    max_concurrency: Optional[int] = Field(None, description="并发数上限 (不填则使用版本默认值)")
+    customer_email: Optional[str] = Field(None, description="客户邮箱 (用于发送授权邮件)")
+
+
+class LicenseGenerateResponse(BaseModel):
+    """License 生成响应 (Admin API)"""
+    success: bool = Field(..., description="生成是否成功")
+    message: str = Field(..., description="结果消息")
+    license_key: Optional[str] = Field(None, description="生成的 License Key (JWT)")
+    lic_id: Optional[str] = Field(None, description="License ID")
+    expires_at: Optional[datetime] = Field(None, description="过期时间")
+    email_sent: bool = Field(default=False, description="是否已发送邮件")

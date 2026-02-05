@@ -21,7 +21,9 @@ config = get_config()
 API_BASE = config.backend_url
 
 # JWT 配置
-JWT_SECRET = os.getenv("JWT_SECRET", "5Sf4IrUfOLVQ7ul46zfg_w-bHHHu_Y67iqscKTw6UM0")
+JWT_SECRET = os.getenv("JWT_SECRET")  # 必须从环境变量获取，切勿硬编码
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET 环境变量未设置，请在运行测试前配置")
 JWT_ALGORITHM = "HS256"
 
 # 测试用户 ID（需要在测试环境中存在）

@@ -11,7 +11,7 @@ from typing import Optional
 from pydantic import BaseModel
 from loguru import logger
 
-from database import get_db
+from database import get_db, get_auth_db
 from match_service.models import Feedback, User
 from match_service.auth import verify_jwt_token
 
@@ -71,11 +71,97 @@ async def submit_feedback(
     logger.info("feedback_submitted | id={} | type={} | user_id={}", 
                 feedback.id, feedback.type, user_id)
     
+    # 发送邮件通知管理员（仅 Bug 反馈）
+    if feedback.type == "bug":
+        try:
+            await send_feedback_notification(feedback, user_id)
+        except Exception as e:
+            logger.warning("feedback_email_failed | id={} | error={}", feedback.id, str(e))
+    
     return {
         "success": True,
         "feedbackId": feedback.id,
         "message": "感谢您的反馈！我们会认真阅读每一条建议。"
     }
+
+
+async def send_feedback_notification(feedback, user_id):
+    """发送反馈通知邮件给管理员"""
+    import httpx
+    import os
+    from datetime import datetime
+    
+    resend_api_key = os.getenv("RESEND_API_KEY")
+    admin_email = os.getenv("ADMIN_EMAIL", "icey123580@gmail.com")
+    
+    if not resend_api_key:
+        logger.warning("RESEND_API_KEY not configured, skipping feedback email")
+        return
+    
+    type_names = {
+        "suggestion": "功能建议",
+        "bug": "Bug 反馈",
+        "other": "其他"
+    }
+    
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    html_content = f"""
+    <div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 style="color: #111; border-bottom: 2px solid #eee; padding-bottom: 12px;">
+            📬 新用户反馈
+        </h2>
+        <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+            <tr>
+                <td style="padding: 8px 0; color: #666; width: 100px;">反馈 ID</td>
+                <td style="padding: 8px 0; font-weight: 600;">#{feedback.id}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666;">类型</td>
+                <td style="padding: 8px 0;">{type_names.get(feedback.type, feedback.type)}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666;">用户 ID</td>
+                <td style="padding: 8px 0;">{user_id or '匿名用户'}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666;">提交时间</td>
+                <td style="padding: 8px 0;">{timestamp}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666;">来源页面</td>
+                <td style="padding: 8px 0;">{feedback.page or '未知'}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: #666;">联系方式</td>
+                <td style="padding: 8px 0;">{feedback.contact or '未提供'}</td>
+            </tr>
+        </table>
+        <div style="background: #f9f9f9; padding: 16px; border-left: 4px solid #333; margin: 16px 0;">
+            <p style="margin: 0; color: #333; white-space: pre-wrap;">{feedback.content}</p>
+        </div>
+        <p style="font-size: 12px; color: #999; margin-top: 24px;">
+            此邮件由 TalentAI 系统自动发送
+        </p>
+    </div>
+    """
+    
+    async with httpx.AsyncClient() as client:
+        await client.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {resend_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "from": "TalentAI 反馈通知 <noreply@auth.intjsys.com>",
+                "to": admin_email,
+                "subject": f"[TalentAI] 新反馈 #{feedback.id}: {type_names.get(feedback.type, feedback.type)}",
+                "html": html_content
+            }
+        )
+    
+    logger.info("feedback_email_sent | id={} | to={}", feedback.id, admin_email)
 
 
 @router.get("/list")
@@ -84,7 +170,8 @@ async def list_feedbacks(
     status: Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db)
 ):
     """
     获取反馈列表（管理员）
@@ -99,8 +186,8 @@ async def list_feedbacks(
     if not user_info:
         raise HTTPException(status_code=401, detail="登录已过期")
     
-    # 检查管理员权限
-    user = db.query(User).filter(User.id == user_info.user_id).first()
+    # 检查管理员权限（从用户主库查询）
+    user = auth_db.query(User).filter(User.id == user_info.user_id).first()
     if not user or user.role != "admin":
         raise HTTPException(status_code=403, detail="权限不足")
     
@@ -149,7 +236,8 @@ async def update_feedback(
     feedback_id: int,
     request: FeedbackUpdateRequest,
     auth_token: Optional[str] = Cookie(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    auth_db: Session = Depends(get_auth_db)
 ):
     """
     更新反馈状态（管理员）
@@ -162,7 +250,8 @@ async def update_feedback(
     if not user_info:
         raise HTTPException(status_code=401, detail="登录已过期")
     
-    user = db.query(User).filter(User.id == user_info.user_id).first()
+    # 检查管理员权限（从用户主库查询）
+    user = auth_db.query(User).filter(User.id == user_info.user_id).first()
     if not user or user.role != "admin":
         raise HTTPException(status_code=403, detail="权限不足")
     

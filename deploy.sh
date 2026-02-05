@@ -7,14 +7,25 @@ set -e
 # ============ 环境配置 ============
 ENV=${2:-"prod"}  # 默认部署到生产环境
 
+# SSH 选项（禁用主机密钥检查以避免交互式提示）
+SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+# Windows 兼容路径处理
+if [ -n "$USERPROFILE" ]; then
+    # Windows 环境 (Git Bash / PowerShell)
+    WIN_HOME=$(cygpath -u "$USERPROFILE" 2>/dev/null || echo "/c/Users/admin")
+else
+    WIN_HOME="$HOME"
+fi
+
 if [ "$ENV" == "staging" ]; then
-    SSH_KEY="/c/Users/admin/Downloads/test.pem"
+    SSH_KEY="$WIN_HOME/Downloads/test.pem"
     SSH_HOST="root@111.230.19.24"
     DEPLOY_PATH="/data/app-stack/talentai"
     IMAGE_TAG="staging"
     echo "🧪 目标环境: STAGING (111.230.19.24)"
 else
-    SSH_KEY="/c/Users/admin/Downloads/reallier.pem"
+    SSH_KEY="$WIN_HOME/Downloads/reallier.pem"
     SSH_HOST="root@119.29.166.51"
     DEPLOY_PATH="/data/app-stack/talentai"
     IMAGE_TAG="prod"
@@ -22,6 +33,7 @@ else
 fi
 
 REGISTRY="ccr.ccs.tencentyun.com/reallier"
+
 
 echo "========================================="
 echo "  TalentAI - 统一部署脚本"
@@ -34,7 +46,7 @@ SERVICE=${1:-"all"}
 update_compose() {
     echo ""
     echo "[0/4] 更新服务器 compose.yml..."
-    scp -i $SSH_KEY deploy/compose.yml $SSH_HOST:$DEPLOY_PATH/compose.yml
+    scp -i $SSH_KEY $SSH_OPTS deploy/compose.yml $SSH_HOST:$DEPLOY_PATH/compose.yml
 }
 
 deploy_backend() {
@@ -62,11 +74,11 @@ deploy_backend() {
     echo ""
     echo "[5/5] 更新服务器 ($SSH_HOST)..."
     if [ "$ENV" == "staging" ]; then
-        ssh -i $SSH_KEY $SSH_HOST "cd $DEPLOY_PATH && \
+        ssh -i $SSH_KEY $SSH_OPTS $SSH_HOST "cd $DEPLOY_PATH && \
             docker pull $REGISTRY/talentai-backend:$IMAGE_TAG && \
             docker compose -f compose.staging.yml up -d talentai-backend"
     else
-        ssh -i $SSH_KEY $SSH_HOST "cd $DEPLOY_PATH && \
+        ssh -i $SSH_KEY $SSH_OPTS $SSH_HOST "cd $DEPLOY_PATH && \
             docker pull $REGISTRY/talentai-backend:$IMAGE_TAG && \
             docker compose up -d talentai-backend"
     fi
@@ -89,7 +101,7 @@ deploy_frontend() {
     
     echo ""
     echo "[4/4] 更新服务器 ($SSH_HOST)..."
-    ssh -i $SSH_KEY $SSH_HOST "cd $DEPLOY_PATH && \
+    ssh -i $SSH_KEY $SSH_OPTS $SSH_HOST "cd $DEPLOY_PATH && \
         docker pull $REGISTRY/talentai-frontend:$IMAGE_TAG && \
         docker compose up -d talentai-frontend"
 }

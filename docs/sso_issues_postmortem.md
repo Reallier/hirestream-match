@@ -50,7 +50,7 @@ environment:
 # 修复后
 environment:
   - DATABASE_URL=...
-  - JWT_SECRET=5Sf4IrUfOLVQ7ul46zfg_w-bHHHu_Y67iqscKTw6UM0
+  - JWT_SECRET=${JWT_SECRET}  # ⚠️ 从安全存储获取，切勿明文写入！
 ```
 
 **测试用例**：`TestInfrastructure.test_jwt_001_secret_consistency`

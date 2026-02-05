@@ -42,12 +42,15 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
 
-def init_db():
+def init_db(fail_on_schema_error: bool = False):
     """
     初始化数据库
     
     - SQLite: 自动创建表（开发用）
     - PostgreSQL: 仅验证连接，表由 init.sql 创建
+    
+    Args:
+        fail_on_schema_error: 如果为 True，schema 不完整时抛出异常阻止启动
     """
     # 导入模型以注册
     from models import User, UsageRecord, Transaction  # noqa: F401
@@ -60,11 +63,27 @@ def init_db():
         Base.metadata.create_all(bind=engine)
         print(f"✅ SQLite 数据库初始化完成: {DATABASE_URL}")
     else:
-        # PostgreSQL: 验证连接即可，表由 init.sql 管理
+        # PostgreSQL: 验证连接和 schema
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
             print(f"✅ PostgreSQL 连接成功: {DATABASE_URL.split('@')[-1]}")
+            
+            # 执行数据库健康检查
+            try:
+                from db_health import check_database_health
+                is_healthy = check_database_health(engine, fail_on_error=fail_on_schema_error)
+                if is_healthy:
+                    print("✅ 数据库 Schema 检查通过")
+                else:
+                    print("⚠️ 数据库 Schema 存在问题，请检查日志")
+            except ImportError:
+                print("⚠️ 数据库健康检查模块未找到，跳过 Schema 验证")
+            except Exception as e:
+                if fail_on_schema_error:
+                    raise
+                print(f"⚠️ 数据库健康检查失败: {e}")
+                
         except Exception as e:
             print(f"❌ PostgreSQL 连接失败: {e}")
 
