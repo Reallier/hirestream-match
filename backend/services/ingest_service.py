@@ -228,7 +228,7 @@ class IngestService:
         
         except Exception as e:
             self.db.rollback()
-            logger.error(f"入库失败: user_id={user_id}, error={str(e)}", exc_info=True)
+            logger.error("入库失败: user_id=%s, error=%s" % (user_id, repr(e)), exc_info=True)
             return {
                 'success': False,
                 'candidate_id': 0,

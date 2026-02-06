@@ -46,7 +46,7 @@ class Resume(Base):
     file_uri = Column(String(500), nullable=False)
     file_type = Column(String(20))
     text_content = Column(Text)
-    text_hash = Column(String(64), unique=True, index=True)
+    text_hash = Column(String(64), index=True)  # 移除 unique，允许不同用户上传相同简历
     parsed_data = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
     
