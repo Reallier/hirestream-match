@@ -459,7 +459,8 @@ class MatchingService:
             text_candidates: Dict[int, Dict[str, Any]] = {}
 
             if mode != "vector":
-                # 文本 + 模糊召回
+                # 文本搜索：使用 ILIKE 进行中文模糊匹配
+                # PostgreSQL 的 ts_rank 不支持中文分词，改用 ILIKE
                 text_sql = text("""
                     SELECT 
                         c.id,
@@ -469,10 +470,8 @@ class MatchingService:
                         c.skills,
                         c.created_at,
                         r.file_uri,
-                        ts_rank_cd(ci.lexical_tsv, websearch_to_tsquery('simple', :query)) AS lexical_score,
-                        similarity(COALESCE(ci.search_text, ''), :query) AS trigram_score,
-                        ts_headline('simple', COALESCE(ci.search_text, ''), websearch_to_tsquery('simple', :query),
-                                    'StartSel=<mark>, StopSel=</mark>, MaxWords=20, MinWords=5, ShortWord=3') AS snippet
+                        CASE WHEN ci.search_text ILIKE '%' || :query || '%' THEN 1.0 ELSE 0.0 END AS text_score,
+                        '' AS snippet
                     FROM candidates c
                     JOIN candidate_index ci ON c.id = ci.candidate_id
                     LEFT JOIN LATERAL (
@@ -484,15 +483,7 @@ class MatchingService:
                     ) r ON TRUE
                     WHERE c.status = 'active'
                         AND c.user_id = :user_id
-                        AND (
-                            ci.lexical_tsv @@ websearch_to_tsquery('simple', :query)
-                            OR ci.search_text % :query
-                            OR similarity(COALESCE(ci.search_text, ''), :query) >= :min_sim
-                        )
-                    ORDER BY GREATEST(
-                        ts_rank_cd(ci.lexical_tsv, websearch_to_tsquery('simple', :query)),
-                        similarity(COALESCE(ci.search_text, ''), :query)
-                    ) DESC
+                        AND ci.search_text ILIKE '%' || :query || '%'
                     LIMIT :limit
                 """)
 
@@ -501,16 +492,13 @@ class MatchingService:
                     {
                         'query': query,
                         'user_id': user_id,
-                        'min_sim': self.search_trigram_min,
                         'limit': max(top_k, self.search_topk_text)
                     }
                 )
 
                 for row in text_result:
                     candidate_id = row[0]
-                    lexical_score = float(row[7]) if row[7] else 0.0
-                    trigram_score = float(row[8]) if row[8] else 0.0
-                    text_score = max(lexical_score, trigram_score)
+                    text_score = float(row[7]) if row[7] else 0.0
                     resume_url = f"/api/files/{row[6]}" if row[6] else None
 
                     text_candidates[candidate_id] = {
@@ -521,7 +509,7 @@ class MatchingService:
                         'skills': row[4] or [],
                         'created_at': row[5],
                         'resume_url': resume_url,
-                        'snippet': row[9] if row[9] else '',
+                        'snippet': row[8] if row[8] else '',
                         'text_score': text_score,
                         'vector_score': 0.0
                     }
