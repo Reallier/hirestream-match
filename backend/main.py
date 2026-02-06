@@ -1195,6 +1195,8 @@ async def download_file(
         raise HTTPException(status_code=400, detail="无效的文件路径")
     
     # 检查文件是否属于当前用户（同一文件可能被多个用户上传）
+    logger.info(f"文件下载请求: user_id={user_id}, file_path={file_path}")
+    
     resume = db.query(Resume).join(Candidate).filter(
         Resume.file_uri == file_path,
         Candidate.user_id == user_id
@@ -1203,6 +1205,7 @@ async def download_file(
     if not resume:
         # 可能文件不存在，或者不属于当前用户
         exists = db.query(Resume).filter(Resume.file_uri == file_path).first()
+        logger.warning(f"文件权限检查失败: user_id={user_id}, file_path={file_path}, exists={exists is not None}")
         if not exists:
             raise HTTPException(status_code=404, detail="文件不存在")
         raise HTTPException(status_code=403, detail="无权访问此文件")
