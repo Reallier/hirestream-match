@@ -46,10 +46,20 @@ const handleFileSelect = (event: Event) => {
 };
 
 const addFiles = (newFiles: File[]) => {
-    const validFiles = newFiles.filter(f => 
-        f.type === 'application/pdf' || 
-        f.type.startsWith('image/')
-    );
+    // 支持 PDF 和图片格式（通过扩展名和 MIME 类型判断）
+    const validExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const validFiles = newFiles.filter(f => {
+        const ext = f.name.toLowerCase().substring(f.name.lastIndexOf('.'));
+        const isValidExt = validExtensions.includes(ext);
+        const isValidMime = f.type === 'application/pdf' || f.type.startsWith('image/');
+        // 如果 MIME 类型为空（某些拖拽场景），仅用扩展名判断
+        return isValidExt || isValidMime;
+    });
+    
+    if (validFiles.length === 0 && newFiles.length > 0) {
+        errorMessage.value = '不支持的文件格式，请上传 PDF 或图片文件';
+    }
+    
     files.value = [...files.value, ...validFiles];
 };
 
