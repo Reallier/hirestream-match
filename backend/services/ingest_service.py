@@ -2,7 +2,7 @@ from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from pathlib import Path
 import shutil
-from datetime import datetime
+from datetime import datetime, date
 from models import Candidate, Resume, Experience, Project, Education, AuditLog
 from services.resume_parser import ResumeParser
 from services.deduplication import DeduplicationService
@@ -130,61 +130,66 @@ class IngestService:
                 self.db.add(resume)
                 self.db.flush()
                 
-                # 创建工作经历
+                # 创建工作经历（容错：单条失败不影响其他）
                 for exp_data in parsed_data.get('experiences', []):
-                    # 处理 description 可能是列表的情况
-                    desc = exp_data.get('description', '')
-                    if isinstance(desc, list):
-                        desc = '\n'.join(str(d) for d in desc)
-                    # 确保 skills 是列表
-                    exp_skills = exp_data.get('skills', [])
-                    if not isinstance(exp_skills, list):
-                        exp_skills = [exp_skills] if exp_skills else []
-                    
-                    experience = Experience(
-                        candidate_id=candidate_id,
-                        company=exp_data.get('company', ''),
-                        title=exp_data.get('title', ''),
-                        start_date=exp_data.get('start_date'),
-                        end_date=exp_data.get('end_date'),
-                        skills=exp_skills,
-                        description=desc
-                    )
-                    self.db.add(experience)
+                    try:
+                        desc = exp_data.get('description', '')
+                        if isinstance(desc, list):
+                            desc = '\n'.join(str(d) for d in desc)
+                        exp_skills = exp_data.get('skills', [])
+                        if not isinstance(exp_skills, list):
+                            exp_skills = [exp_skills] if exp_skills else []
+                        
+                        experience = Experience(
+                            candidate_id=candidate_id,
+                            company=exp_data.get('company', ''),
+                            title=exp_data.get('title', ''),
+                            start_date=self._safe_parse_date(exp_data.get('start_date')),
+                            end_date=self._safe_parse_date(exp_data.get('end_date')),
+                            skills=exp_skills,
+                            description=desc
+                        )
+                        self.db.add(experience)
+                    except Exception as e:
+                        logger.warning(f"创建工作经历失败: {e}")
                 
-                # 创建项目经历
+                # 创建项目经历（容错）
                 for proj_data in parsed_data.get('projects', []):
-                    # 处理 description 可能是列表的情况
-                    proj_desc = proj_data.get('description', '')
-                    if isinstance(proj_desc, list):
-                        proj_desc = '\n'.join(str(d) for d in proj_desc)
-                    # 确保 skills 是列表
-                    proj_skills = proj_data.get('skills', [])
-                    if not isinstance(proj_skills, list):
-                        proj_skills = [proj_skills] if proj_skills else []
-                    
-                    project = Project(
-                        candidate_id=candidate_id,
-                        project_name=proj_data.get('project_name'),
-                        role=proj_data.get('role'),
-                        start_date=proj_data.get('start_date'),
-                        end_date=proj_data.get('end_date'),
-                        skills=proj_skills,
-                        description=proj_desc
-                    )
-                    self.db.add(project)
+                    try:
+                        proj_desc = proj_data.get('description', '')
+                        if isinstance(proj_desc, list):
+                            proj_desc = '\n'.join(str(d) for d in proj_desc)
+                        proj_skills = proj_data.get('skills', [])
+                        if not isinstance(proj_skills, list):
+                            proj_skills = [proj_skills] if proj_skills else []
+                        
+                        project = Project(
+                            candidate_id=candidate_id,
+                            project_name=proj_data.get('project_name'),
+                            role=proj_data.get('role'),
+                            start_date=self._safe_parse_date(proj_data.get('start_date')),
+                            end_date=self._safe_parse_date(proj_data.get('end_date')),
+                            skills=proj_skills,
+                            description=proj_desc
+                        )
+                        self.db.add(project)
+                    except Exception as e:
+                        logger.warning(f"创建项目经历失败: {e}")
                 
-                # 创建教育经历
+                # 创建教育经历（容错）
                 for edu_data in parsed_data.get('education', []):
-                    education = Education(
-                        candidate_id=candidate_id,
-                        school=edu_data.get('school'),
-                        degree=edu_data.get('degree'),
-                        major=edu_data.get('major'),
-                        start_date=edu_data.get('start_date'),
-                        end_date=edu_data.get('end_date')
-                    )
-                    self.db.add(education)
+                    try:
+                        education = Education(
+                            candidate_id=candidate_id,
+                            school=edu_data.get('school'),
+                            degree=edu_data.get('degree'),
+                            major=edu_data.get('major'),
+                            start_date=self._safe_parse_date(edu_data.get('start_date')),
+                            end_date=self._safe_parse_date(edu_data.get('end_date'))
+                        )
+                        self.db.add(education)
+                    except Exception as e:
+                        logger.warning(f"创建教育经历失败: {e}")
                 
                 # 记录审计日志
                 self._log_audit('candidate', candidate_id, 'create', {
@@ -245,37 +250,70 @@ class IngestService:
             return [self._serialize_dates(item) for item in obj]
         return obj
     
+    def _safe_parse_date(self, date_str: Any) -> Optional[str]:
+        """安全解析日期，支持多种格式，返回标准格式或 None"""
+        if date_str is None:
+            return None
+        if isinstance(date_str, (date, datetime)):
+            return date_str.isoformat()
+        if not isinstance(date_str, str):
+            return None
+        
+        # 支持多种格式
+        for fmt in ['%Y-%m-%d', '%Y-%m', '%Y', '%Y/%m/%d', '%Y/%m', '%d/%m/%Y', '%m/%d/%Y']:
+            try:
+                parsed = datetime.strptime(date_str.strip(), fmt)
+                return parsed.date().isoformat()
+            except ValueError:
+                continue
+        
+        # 无法解析，返回原字符串让数据库处理
+        logger.warning(f"无法解析日期: {date_str}")
+        return None
+    
     def _build_candidate_data(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
-        """从解析数据构建候选人数据"""
-        personal = parsed_data.get('personal', {})
-        experiences = parsed_data.get('experiences', [])
-        education = parsed_data.get('education', [])
-        skills = parsed_data.get('skills', [])
-        
-        # 提取当前职位和公司
-        current_title = None
-        current_company = None
-        if experiences:
-            latest_exp = experiences[0]
-            current_title = latest_exp.get('title')
-            current_company = latest_exp.get('company')
-        
-        # 计算工作年限
-        years_experience = self._calculate_years_experience(experiences)
-        
-        # 提取教育水平
-        education_level = self._extract_education_level(education)
-        
-        return {
-            'email': personal.get('email'),
-            'phone': personal.get('phone'),
-            'location': personal.get('location'),
-            'years_experience': years_experience,
-            'current_title': current_title,
-            'current_company': current_company,
-            'skills': skills,
-            'education_level': education_level
-        }
+        """从解析数据构建候选人数据（容错处理）"""
+        try:
+            personal = parsed_data.get('personal', {})
+            experiences = parsed_data.get('experiences', [])
+            education = parsed_data.get('education', [])
+            skills = parsed_data.get('skills', [])
+            
+            # 提取当前职位和公司
+            current_title = None
+            current_company = None
+            if experiences:
+                latest_exp = experiences[0]
+                current_title = latest_exp.get('title')
+                current_company = latest_exp.get('company')
+            
+            # 计算工作年限（容错）
+            try:
+                years_experience = self._calculate_years_experience(experiences)
+            except Exception as e:
+                logger.warning(f"计算工作年限失败: {e}")
+                years_experience = None
+            
+            # 提取教育水平（容错）
+            try:
+                education_level = self._extract_education_level(education)
+            except Exception as e:
+                logger.warning(f"提取教育水平失败: {e}")
+                education_level = None
+            
+            return {
+                'email': personal.get('email'),
+                'phone': personal.get('phone'),
+                'location': personal.get('location'),
+                'years_experience': years_experience,
+                'current_title': current_title,
+                'current_company': current_company,
+                'skills': skills if isinstance(skills, list) else [],
+                'education_level': education_level
+            }
+        except Exception as e:
+            logger.warning(f"构建候选人数据失败: {e}")
+            return {}
     
     def _calculate_years_experience(self, experiences: list) -> Optional[int]:
         """计算工作年限"""
