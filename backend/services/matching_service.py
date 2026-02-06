@@ -459,8 +459,7 @@ class MatchingService:
             text_candidates: Dict[int, Dict[str, Any]] = {}
 
             if mode != "vector":
-                # 文本搜索：使用 ILIKE 进行中文模糊匹配
-                # PostgreSQL 的 ts_rank 不支持中文分词，改用 ILIKE
+                # 中文全文搜索：使用 zhparser 分词
                 text_sql = text("""
                     SELECT 
                         c.id,
@@ -470,8 +469,12 @@ class MatchingService:
                         c.skills,
                         c.created_at,
                         r.file_uri,
-                        CASE WHEN ci.search_text ILIKE '%' || :query || '%' THEN 1.0 ELSE 0.0 END AS text_score,
-                        '' AS snippet
+                        ts_rank_cd(
+                            to_tsvector('chinese', COALESCE(ci.search_text, '')),
+                            plainto_tsquery('chinese', :query)
+                        ) AS text_score,
+                        ts_headline('chinese', COALESCE(ci.search_text, ''), plainto_tsquery('chinese', :query),
+                                    'StartSel=<mark>, StopSel=</mark>, MaxWords=30, MinWords=10') AS snippet
                     FROM candidates c
                     JOIN candidate_index ci ON c.id = ci.candidate_id
                     LEFT JOIN LATERAL (
@@ -483,7 +486,8 @@ class MatchingService:
                     ) r ON TRUE
                     WHERE c.status = 'active'
                         AND c.user_id = :user_id
-                        AND ci.search_text ILIKE '%' || :query || '%'
+                        AND to_tsvector('chinese', COALESCE(ci.search_text, '')) @@ plainto_tsquery('chinese', :query)
+                    ORDER BY text_score DESC
                     LIMIT :limit
                 """)
 
