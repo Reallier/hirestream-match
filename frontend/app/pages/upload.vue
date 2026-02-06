@@ -68,6 +68,8 @@ const removeFile = (index: number) => {
 };
 
 // 上传处理
+const totalFiles = ref(0);
+
 const uploadFiles = async () => {
     if (!user.value) {
         redirectToLogin();
@@ -84,10 +86,11 @@ const uploadFiles = async () => {
     uploadResults.value = [];
     uploadProgress.value = 0;
 
-    const total = files.value.length;
+    const filesToUpload = [...files.value]; // 复制一份，避免循环中被修改
+    totalFiles.value = filesToUpload.length;
     let completed = 0;
 
-    for (const file of files.value) {
+    for (const file of filesToUpload) {
         const result = await uploadResume(file);
 
         if (result.success) {
@@ -105,11 +108,12 @@ const uploadFiles = async () => {
         }
         
         completed++;
-        uploadProgress.value = Math.round((completed / total) * 100);
+        uploadProgress.value = Math.round((completed / totalFiles.value) * 100);
     }
 
     isUploading.value = false;
     files.value = [];
+    totalFiles.value = 0;
     await refreshUser();
 };
 
@@ -174,13 +178,13 @@ const formatFileSize = (bytes: number) => {
 
             <!-- 上传按钮 -->
             <div class="upload-actions">
-                <button 
+            <button 
                     class="btn btn-primary btn-lg" 
                     @click="uploadFiles"
                     :disabled="isUploading || files.length === 0"
                 >
                     <span v-if="isUploading" class="loading-spinner"></span>
-                    {{ isUploading ? `上传中 ${uploadProgress}%` : '开始上传入库' }}
+                    {{ isUploading ? (totalFiles > 1 ? `上传中 ${uploadProgress}%` : '正在解析入库...') : '开始上传入库' }}
                 </button>
             </div>
 
