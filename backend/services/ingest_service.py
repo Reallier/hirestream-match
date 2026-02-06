@@ -32,6 +32,8 @@ class IngestService:
     ) -> Dict[str, Any]:
         """入库简历"""
         try:
+            logger.info(f"开始入库简历: user_id={user_id}, file={file_path}")
+            
             # 1. 解析简历
             parsed_result = self.parser.parse_file(file_path)
             text_content = parsed_result['text_content']
@@ -221,6 +223,7 @@ class IngestService:
         
         except Exception as e:
             self.db.rollback()
+            logger.error(f"入库失败: user_id={user_id}, error={str(e)}", exc_info=True)
             return {
                 'success': False,
                 'candidate_id': 0,
