@@ -1194,17 +1194,17 @@ async def download_file(
     if ".." in file_path or file_path.startswith("/"):
         raise HTTPException(status_code=400, detail="无效的文件路径")
     
-    # 检查文件是否属于当前用户
-    resume = db.query(Resume).filter(Resume.file_uri == file_path).first()
-    if not resume:
-        raise HTTPException(status_code=404, detail="文件不存在")
-    
-    candidate = db.query(Candidate).filter(
-        Candidate.id == resume.candidate_id,
+    # 检查文件是否属于当前用户（同一文件可能被多个用户上传）
+    resume = db.query(Resume).join(Candidate).filter(
+        Resume.file_uri == file_path,
         Candidate.user_id == user_id
     ).first()
     
-    if not candidate:
+    if not resume:
+        # 可能文件不存在，或者不属于当前用户
+        exists = db.query(Resume).filter(Resume.file_uri == file_path).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail="文件不存在")
         raise HTTPException(status_code=403, detail="无权访问此文件")
     
     # 构建完整路径
