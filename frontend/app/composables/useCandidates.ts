@@ -124,7 +124,8 @@ export const useCandidates = () => {
             });
 
             return {
-                success: true,
+                success: response.success !== false,
+                message: response.message,
                 candidate: response.candidate
             };
         } catch (error: any) {
