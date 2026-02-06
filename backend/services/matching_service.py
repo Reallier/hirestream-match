@@ -528,7 +528,7 @@ class MatchingService:
                     c.skills,
                     c.created_at,
                     r.file_uri,
-                    1 - (ci.embedding <=> :query_embedding::vector) AS vector_score
+                    1 - (ci.embedding <=> CAST(:query_embedding AS vector)) AS vector_score
                 FROM candidates c
                 JOIN candidate_index ci ON c.id = ci.candidate_id
                 LEFT JOIN LATERAL (
@@ -540,7 +540,7 @@ class MatchingService:
                 ) r ON TRUE
                 WHERE c.status = 'active'
                     AND c.user_id = :user_id
-                ORDER BY ci.embedding <=> :query_embedding::vector
+                ORDER BY ci.embedding <=> CAST(:query_embedding AS vector)
                 LIMIT :limit
             """)
 
