@@ -12,6 +12,44 @@
         "test_07_security.py::TestInformationLeakage::test_leak_006_server_config",
         "test_07_security.py::TestPromptInjection::test_injection_role_play"
       ]
+    },
+    {
+      "time": "2026-02-05 22:30",
+      "env": "prod",
+      "passed": 0,
+      "failed": 0,
+      "total": 0,
+      "failed_tests": []
+    },
+    {
+      "time": "2026-02-05 22:31",
+      "env": "prod",
+      "passed": 4,
+      "failed": 0,
+      "total": 4,
+      "failed_tests": [
+        "[100%]",
+        "test_14_sso_config.py::TestSSOHealthCheck::test_sso_health_quick_check"
+      ]
+    },
+    {
+      "time": "2026-02-05 22:32",
+      "env": "prod",
+      "passed": 4,
+      "failed": 1,
+      "total": 5,
+      "failed_tests": [
+        "[100%]",
+        "test_14_sso_config.py::TestSSOHealthCheck::test_sso_health_quick_check"
+      ]
+    },
+    {
+      "time": "2026-02-05 22:32",
+      "env": "prod",
+      "passed": 5,
+      "failed": 0,
+      "total": 5,
+      "failed_tests": []
     }
   ],
   "tests": {
@@ -24,6 +62,16 @@
       "fail_count": 2,
       "last_status": "failed",
       "last_fail": "2026-01-02 13:24"
+    },
+    "[100%]": {
+      "fail_count": 2,
+      "last_status": "failed",
+      "last_fail": "2026-02-05 22:32"
+    },
+    "test_14_sso_config.py::TestSSOHealthCheck::test_sso_health_quick_check": {
+      "fail_count": 2,
+      "last_status": "failed",
+      "last_fail": "2026-02-05 22:32"
     }
   }
 }

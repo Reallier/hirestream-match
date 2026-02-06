@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS education (
 -- 索引视图（用于检索）
 CREATE TABLE IF NOT EXISTS candidate_index (
     candidate_id INTEGER PRIMARY KEY REFERENCES candidates(id) ON DELETE CASCADE,
+    search_text TEXT, -- 聚合后的检索文本（全文 + 模糊）
     lexical_tsv TSVECTOR, -- 全文搜索向量
     embedding vector(1536), -- OpenAI embedding 维度
     filters_json JSONB, -- 过滤字段快照 {location, years, education, etc.}
@@ -139,6 +140,9 @@ CREATE INDEX idx_education_candidate_id ON education(candidate_id);
 -- 全文搜索索引
 CREATE INDEX idx_candidate_index_lexical ON candidate_index USING GIN(lexical_tsv);
 
+-- 模糊搜索索引（pg_trgm）
+CREATE INDEX idx_candidate_index_search_text_trgm ON candidate_index USING GIN(search_text gin_trgm_ops);
+
 -- 向量相似度搜索索引（HNSW）
 CREATE INDEX idx_candidate_index_embedding ON candidate_index USING hnsw (embedding vector_cosine_ops);
 
@@ -177,11 +181,8 @@ CREATE TRIGGER update_candidates_updated_at
 CREATE OR REPLACE FUNCTION update_candidate_lexical_tsv()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- 合并候选人信息、经历、项目等文本用于全文搜索
-    NEW.lexical_tsv := to_tsvector('simple', 
-        COALESCE((SELECT name || ' ' || current_title || ' ' || current_company || ' ' || array_to_string(skills, ' ')
-         FROM candidates WHERE id = NEW.candidate_id), '')
-    );
+    -- 使用 search_text 生成全文索引，避免触发器覆盖索引内容
+    NEW.lexical_tsv := to_tsvector('simple', COALESCE(NEW.search_text, ''));
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

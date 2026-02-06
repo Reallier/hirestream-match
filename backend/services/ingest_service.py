@@ -38,6 +38,9 @@ class IngestService:
             text_hash = parsed_result['text_hash']
             parsed_data = parsed_result['parsed_data']
             
+            # 序列化 date 对象为字符串（避免 JSON 序列化错误）
+            parsed_data = self._serialize_dates(parsed_data)
+            
             # 2. 提取关键信息用于判重
             personal_info = parsed_data.get('personal', {})
             email = personal_info.get('email')
@@ -65,6 +68,19 @@ class IngestService:
                 # 合并...
                 candidate_id = existing_candidate.id
                 is_new = False
+                
+                # 检查 text_hash 是否已存在（避免唯一约束冲突）
+                existing_resume = self.db.query(Resume).filter(Resume.text_hash == text_hash).first()
+                if existing_resume:
+                    # 简历内容完全相同，跳过
+                    return {
+                        'success': True,
+                        'candidate_id': candidate_id,
+                        'resume_id': existing_resume.id,
+                        'is_new': False,
+                        'merged_with': candidate_id,
+                        'message': f'简历内容与已有记录相同，已跳过 (候选人 ID: {candidate_id})'
+                    }
                 
                 resume = Resume(
                     candidate_id=candidate_id,
@@ -114,27 +130,45 @@ class IngestService:
                 
                 # 创建工作经历
                 for exp_data in parsed_data.get('experiences', []):
+                    # 处理 description 可能是列表的情况
+                    desc = exp_data.get('description', '')
+                    if isinstance(desc, list):
+                        desc = '\n'.join(str(d) for d in desc)
+                    # 确保 skills 是列表
+                    exp_skills = exp_data.get('skills', [])
+                    if not isinstance(exp_skills, list):
+                        exp_skills = [exp_skills] if exp_skills else []
+                    
                     experience = Experience(
                         candidate_id=candidate_id,
                         company=exp_data.get('company', ''),
                         title=exp_data.get('title', ''),
                         start_date=exp_data.get('start_date'),
                         end_date=exp_data.get('end_date'),
-                        skills=exp_data.get('skills', []),
-                        description=exp_data.get('description', '')
+                        skills=exp_skills,
+                        description=desc
                     )
                     self.db.add(experience)
                 
                 # 创建项目经历
                 for proj_data in parsed_data.get('projects', []):
+                    # 处理 description 可能是列表的情况
+                    proj_desc = proj_data.get('description', '')
+                    if isinstance(proj_desc, list):
+                        proj_desc = '\n'.join(str(d) for d in proj_desc)
+                    # 确保 skills 是列表
+                    proj_skills = proj_data.get('skills', [])
+                    if not isinstance(proj_skills, list):
+                        proj_skills = [proj_skills] if proj_skills else []
+                    
                     project = Project(
                         candidate_id=candidate_id,
                         project_name=proj_data.get('project_name'),
                         role=proj_data.get('role'),
                         start_date=proj_data.get('start_date'),
                         end_date=proj_data.get('end_date'),
-                        skills=proj_data.get('skills', []),
-                        description=proj_data.get('description', '')
+                        skills=proj_skills,
+                        description=proj_desc
                     )
                     self.db.add(project)
                 
@@ -195,6 +229,18 @@ class IngestService:
                 'merged_with': None,
                 'message': f'入库失败: {str(e)}'
             }
+    
+    def _serialize_dates(self, obj: Any) -> Any:
+        """递归将 date/datetime 对象转换为 ISO 格式字符串"""
+        from datetime import date, datetime as dt
+        
+        if isinstance(obj, (date, dt)):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {k: self._serialize_dates(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._serialize_dates(item) for item in obj]
+        return obj
     
     def _build_candidate_data(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         """从解析数据构建候选人数据"""

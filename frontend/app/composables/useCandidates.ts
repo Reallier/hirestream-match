@@ -16,6 +16,7 @@ interface Candidate {
     skills?: string[];
     status?: string;
     createdAt?: string;
+    resumeUrl?: string;
 }
 
 interface CandidateListResponse {
@@ -27,6 +28,23 @@ export const useCandidates = () => {
     const config = useRuntimeConfig();
     const apiBase = config.public.apiBase;
     const { user } = useAuth();
+
+    /**
+     * 将 snake_case 转换为 camelCase
+     */
+    const toCamelCase = (obj: any): any => {
+        if (Array.isArray(obj)) {
+            return obj.map(toCamelCase);
+        }
+        if (obj !== null && typeof obj === 'object') {
+            return Object.keys(obj).reduce((acc: any, key) => {
+                const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+                acc[camelKey] = toCamelCase(obj[key]);
+                return acc;
+            }, {});
+        }
+        return obj;
+    };
 
     /**
      * 获取候选人列表
@@ -42,13 +60,15 @@ export const useCandidates = () => {
         if (params?.limit) queryParams.append('limit', String(params.limit));
         if (params?.status) queryParams.append('status', params.status);
 
-        const response = await $fetch<any>(`${apiBase}/api/candidates?${queryParams.toString()}`, {
+        const response = await $fetch<any[]>(`${apiBase}/api/candidates?${queryParams.toString()}`, {
             credentials: 'include'
         });
 
+        // 后端返回的是候选人数组，转换字段名
+        const candidates = Array.isArray(response) ? toCamelCase(response) : [];
         return {
-            candidates: response.candidates || [],
-            total: response.total || 0
+            candidates,
+            total: candidates.length
         };
     };
 
@@ -97,7 +117,7 @@ export const useCandidates = () => {
         formData.append('source', 'upload');
 
         try {
-            const response = await $fetch<any>(`${apiBase}/api/ingest`, {
+            const response = await $fetch<any>(`${apiBase}/api/candidates/ingest`, {
                 method: 'POST',
                 body: formData,
                 credentials: 'include'
@@ -119,13 +139,17 @@ export const useCandidates = () => {
      * 搜索候选人
      */
     const searchCandidates = async (query: string, topK: number = 20): Promise<Candidate[]> => {
-        if (!user.value || !query) return [];
+        if (!user.value || !query?.trim()) return [];
 
-        const response = await $fetch<any>(`${apiBase}/api/search?q=${encodeURIComponent(query)}&user_id=${user.value.id}&top_k=${topK}`, {
+        const response = await $fetch<any>(`${apiBase}/api/search?q=${encodeURIComponent(query.trim())}&user_id=${user.value.id}&top_k=${topK}&mode=hybrid`, {
             credentials: 'include'
         });
 
-        return response?.candidates || [];
+        const results = Array.isArray(response?.results) ? toCamelCase(response.results) : [];
+        return results.map((item: any) => ({
+            ...item,
+            id: item.id ?? item.candidateId
+        }));
     };
 
     return {

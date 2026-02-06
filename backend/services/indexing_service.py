@@ -55,8 +55,8 @@ class IndexingService:
             # 1. 构建候选人数据
             candidate_data = self._build_candidate_data(candidate)
             
-            # 2. 生成全文搜索向量
-            lexical_text = self._build_lexical_text(candidate_data)
+            # 2. 构建检索文本（用于全文搜索/模糊搜索）
+            search_text = self._build_lexical_text(candidate_data)
             
             # 3. 生成语义向量
             summary_text = self.llm_service.summarize_candidate(candidate_data)
@@ -77,16 +77,17 @@ class IndexingService:
                 self.db.execute(
                     text("""
                         UPDATE candidate_index 
-                        SET lexical_tsv = to_tsvector('simple', :lexical_text),
-                            embedding = :embedding::vector,
-                            filters_json = :filters_json::jsonb,
-                            features_json = :features_json::jsonb,
+                        SET search_text = :search_text,
+                            lexical_tsv = to_tsvector('simple', :search_text),
+                            embedding = CAST(:embedding AS vector),
+                            filters_json = CAST(:filters_json AS jsonb),
+                            features_json = CAST(:features_json AS jsonb),
                             embedding_version = :version,
                             index_updated_at = :updated_at
                         WHERE candidate_id = :candidate_id
                     """),
                     {
-                        'lexical_text': lexical_text,
+                        'search_text': search_text,
                         'embedding': str(embedding),
                         'filters_json': filters_json,
                         'features_json': features_json,
@@ -100,13 +101,13 @@ class IndexingService:
                 self.db.execute(
                     text("""
                         INSERT INTO candidate_index 
-                        (candidate_id, lexical_tsv, embedding, filters_json, features_json, embedding_version, index_updated_at)
-                        VALUES (:candidate_id, to_tsvector('simple', :lexical_text), :embedding::vector, 
-                                :filters_json::jsonb, :features_json::jsonb, :version, :updated_at)
+                        (candidate_id, search_text, lexical_tsv, embedding, filters_json, features_json, embedding_version, index_updated_at)
+                        VALUES (:candidate_id, :search_text, to_tsvector('simple', :search_text), CAST(:embedding AS vector), 
+                                CAST(:filters_json AS jsonb), CAST(:features_json AS jsonb), :version, :updated_at)
                     """),
                     {
                         'candidate_id': candidate_id,
-                        'lexical_text': lexical_text,
+                        'search_text': search_text,
                         'embedding': str(embedding),
                         'filters_json': filters_json,
                         'features_json': features_json,

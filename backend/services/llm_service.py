@@ -72,6 +72,103 @@ class LLMService:
                 'notes': f'解析失败: {str(e)}'
             }
     
+    def parse_resume(self, resume_text: str) -> Dict[str, Any]:
+        """
+        使用 LLM 解析简历，提取结构化信息
+        
+        Returns:
+            {
+                'personal': {'name': str, 'email': str, 'phone': str, 'location': str},
+                'current_title': str,
+                'current_company': str,
+                'years_experience': int,
+                'skills': List[str],
+                'experiences': List[Dict],
+                'education': List[Dict]
+            }
+        """
+        # 截断过长的文本
+        text = self._truncate_text(resume_text, max_tokens=6000)
+        
+        prompt = f"""请分析以下简历内容，提取关键信息。
+
+简历内容：
+{text}
+
+请以 JSON 格式返回以下信息：
+1. name: 候选人姓名（必须提取，如果无法确定则返回文件中最像姓名的词）
+2. email: 邮箱地址
+3. phone: 手机号码
+4. location: 所在城市
+5. current_title: 当前/最近职位
+6. current_company: 当前/最近公司
+7. years_experience: 工作年限（整数，根据工作经历计算）
+8. skills: 技能列表（提取所有技术技能、工具、语言等，最多20个）
+9. education_level: 最高学历（如：本科、硕士、博士、专科）
+10. experiences: 工作经历列表，每条包含 company, title, start_date, end_date, description
+11. education: 教育经历列表，每条包含 school, degree, major, start_date, end_date
+
+注意：
+- 姓名是最重要的字段，请仔细识别
+- 日期格式用 YYYY-MM 或 YYYY
+- 如果信息不存在，返回 null
+- skills 请提取具体的技术技能（如 Python、Vue、PostgreSQL），不要提取软技能
+
+请确保返回有效的 JSON 格式。"""
+
+        try:
+            response = dashscope.Generation.call(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": "你是一个专业的简历解析助手，擅长从简历文本中提取结构化信息。请仔细分析并提取所有可用信息。"},
+                    {"role": "user", "content": prompt}
+                ],
+                result_format='message'
+            )
+
+            content = response.output.choices[0].message.content
+            # 清理 JSON 格式
+            content = content.strip()
+            if content.startswith('```json'):
+                content = content[7:]
+            if content.startswith('```'):
+                content = content[3:]
+            if content.endswith('```'):
+                content = content[:-3]
+            
+            result = json.loads(content.strip())
+            
+            # 规范化返回格式
+            return {
+                'personal': {
+                    'name': result.get('name'),
+                    'email': result.get('email'),
+                    'phone': result.get('phone'),
+                    'location': result.get('location')
+                },
+                'current_title': result.get('current_title'),
+                'current_company': result.get('current_company'),
+                'years_experience': result.get('years_experience'),
+                'skills': result.get('skills', []) or [],
+                'education_level': result.get('education_level'),
+                'experiences': result.get('experiences', []) or [],
+                'education': result.get('education', []) or []
+            }
+        
+        except Exception as e:
+            logger.error(f"LLM 简历解析失败: {str(e)}")
+            # 返回空结构
+            return {
+                'personal': {'name': None, 'email': None, 'phone': None, 'location': None},
+                'current_title': None,
+                'current_company': None,
+                'years_experience': None,
+                'skills': [],
+                'education_level': None,
+                'experiences': [],
+                'education': []
+            }
+    
     def generate_embedding(self, text: str) -> Optional[List[float]]:
         """
         生成文本的向量表示
@@ -91,7 +188,16 @@ class LLMService:
                 input=text
             )
 
-            return response.output.embeddings[0].embedding
+            # 支持字典和对象两种返回格式
+            output = response.output
+            if isinstance(output, dict):
+                embeddings = output.get('embeddings', [])
+                if embeddings:
+                    return embeddings[0].get('embedding')
+            else:
+                return output.embeddings[0].embedding
+            
+            return None
         
         except Exception as e:
             logger.error(f"生成 embedding 失败: {str(e)}")
@@ -125,9 +231,14 @@ class LLMService:
                 input=truncated_texts
             )
 
-            # 按顺序提取 embeddings
-            for item in response.output.embeddings:
-                embeddings.append(item.embedding)
+            # 支持字典和对象两种返回格式
+            output = response.output
+            if isinstance(output, dict):
+                for item in output.get('embeddings', []):
+                    embeddings.append(item.get('embedding'))
+            else:
+                for item in output.embeddings:
+                    embeddings.append(item.embedding)
 
             return embeddings
         

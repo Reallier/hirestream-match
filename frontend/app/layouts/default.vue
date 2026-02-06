@@ -53,15 +53,11 @@ const navItems = [
     { path: '/', label: '即时匹配', icon: 'bolt' },
     { path: '/upload', label: '简历入库', icon: 'cloud-upload-alt' },
     { path: '/library', label: '我的人才库', icon: 'users' },
-    { path: '/search', label: '人才搜索', icon: 'search' },
     { path: '/match', label: 'JD 匹配', icon: 'bullseye' },
     { path: '/history', label: '历史记录', icon: 'history' },
 ];
 
-// 格式化金额
-const formatMoney = (amount: number) => {
-    return amount.toFixed(2);
-};
+
 </script>
 
 <template>
@@ -106,10 +102,7 @@ const formatMoney = (amount: number) => {
                 
                 <div class="user-menu" v-if="!loading">
                     <template v-if="user">
-                        <div class="user-balance">
-                            <FaIcon icon="wallet" class="balance-icon" />
-                            <span class="user-balance-amount">¥{{ formatMoney(user.totalAvailable) }}</span>
-                        </div>
+
                         <div class="user-menu-wrapper">
                             <img 
                                 :src="user.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`"
@@ -282,30 +275,10 @@ const formatMoney = (amount: number) => {
     white-space: nowrap;
 }
 
-.balance-icon {
-    font-size: 14px;
-    color: var(--color-primary);
-}
-
 .user-menu {
     display: flex;
     align-items: center;
     gap: 16px;
-}
-
-.user-balance {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    background: var(--color-bg);
-    border-radius: 8px;
-    font-size: 13px;
-}
-
-.user-balance-amount {
-    font-weight: 600;
-    color: var(--color-primary);
 }
 
 .user-menu-wrapper {

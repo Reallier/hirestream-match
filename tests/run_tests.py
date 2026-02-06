@@ -37,23 +37,18 @@ def save_history(history: dict):
 def parse_pytest_output(output: str) -> dict:
     """解析 pytest 输出获取测试结果"""
     result = {"passed": 0, "failed": 0, "total": 0, "details": []}
-    
-    # 解析 "X passed, Y failed" 格式
+    import re
+
+    # 解析 "X passed, Y failed" 或 "X failed, Y passed" 格式
     for line in output.split("\n"):
-        if "passed" in line and ("failed" in line or "=" in line):
-            parts = line.split()
-            for i, part in enumerate(parts):
-                if part == "passed" and i > 0:
-                    try:
-                        result["passed"] = int(parts[i-1])
-                    except ValueError:
-                        pass
-                if part == "failed" and i > 0:
-                    try:
-                        result["failed"] = int(parts[i-1].rstrip(","))
-                    except ValueError:
-                        pass
-        
+        if "passed" in line or "failed" in line:
+            passed_match = re.search(r"(\d+)\s+passed", line)
+            failed_match = re.search(r"(\d+)\s+failed", line)
+            if passed_match:
+                result["passed"] = int(passed_match.group(1))
+            if failed_match:
+                result["failed"] = int(failed_match.group(1))
+
         # 解析失败的测试名
         if "FAILED" in line:
             test_name = line.split("FAILED")[-1].strip().split(" ")[0].strip()
@@ -125,6 +120,10 @@ def main():
         help="显示历史记录"
     )
     parser.add_argument(
+        "--profile",
+        help="使用 profiles.json 中的预设配置"
+    )
+    parser.add_argument(
         "--cov",
         action="store_true",
         help="生成覆盖率报告 (输出到 reports/coverage/)"
@@ -136,9 +135,38 @@ def main():
     if args.history:
         show_history()
         return 0
+
+    profile_modules = None
+    if args.profile:
+        profiles_path = Path(__file__).parent / "profiles.json"
+        if not profiles_path.exists():
+            print("❌ 未找到 profiles.json")
+            return 1
+        try:
+            profiles = json.loads(profiles_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"❌ profiles.json 解析失败: {e}")
+            return 1
+        profile = profiles.get(args.profile)
+        if not profile:
+            available = ", ".join(sorted(profiles.keys()))
+            print(f"❌ 未找到 profile: {args.profile}")
+            print(f"可用 profiles: {available}")
+            return 1
+        if "env" in profile:
+            args.env = profile["env"]
+        if "readonly" in profile:
+            args.readonly = bool(profile["readonly"])
+        if "parallel" in profile:
+            args.parallel = int(profile["parallel"])
+        if "modules" in profile:
+            if not isinstance(profile["modules"], list):
+                print("❌ profile.modules 必须是列表")
+                return 1
+            profile_modules = profile["modules"]
     
-    # 构建 pytest 命令
-    cmd = ["pytest"]
+    # 构建 pytest 命令（使用当前解释器，避免找不到 pytest）
+    cmd = [sys.executable, "-m", "pytest"]
     
     # 环境参数
     cmd.extend([f"--env={args.env}"])
@@ -153,7 +181,9 @@ def main():
     
     cmd.append("--tb=no")  # 不显示 traceback
     
-    if args.module:
+    if profile_modules:
+        cmd.extend(profile_modules)
+    elif args.module:
         cmd.append(f"{args.module}.py")
     
     # 并发执行
@@ -172,6 +202,8 @@ def main():
     cmd.extend(["-W", "ignore::urllib3.exceptions.InsecureRequestWarning"])
     
     # 显示命令
+    if args.profile:
+        print(f"🎯 使用 profile: {args.profile}")
     print(f"🚀 运行测试: pytest --env={args.env} -n {args.parallel}")
     print(f"📍 环境: {args.env}")
     print("-" * 50)

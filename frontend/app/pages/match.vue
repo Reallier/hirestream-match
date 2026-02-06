@@ -56,10 +56,7 @@ const runMatch = async () => {
         return;
     }
 
-    if (user.value.totalAvailable <= 0) {
-        errorMessage.value = '余额不足，请充值后使用';
-        return;
-    }
+
 
     isMatching.value = true;
     errorMessage.value = '';
@@ -86,7 +83,6 @@ const runMatch = async () => {
     }
 };
 
-const formatMoney = (amount: number) => amount.toFixed(2);
 </script>
 
 <template>
@@ -155,9 +151,6 @@ const formatMoney = (amount: number) => amount.toFixed(2);
                         <FaIcon v-else icon="search" />
                         {{ isMatching ? '匹配中...' : '开始匹配' }}
                     </button>
-                    <p class="match-hint">
-                        当前可用额度: <strong>¥{{ formatMoney(user.totalAvailable) }}</strong>
-                    </p>
                 </div>
             </div>
 

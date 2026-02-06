@@ -16,11 +16,18 @@ from loguru import logger as log
 load_dotenv()
 
 # JWT 配置
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-key-change-in-production")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "").lower()
+DEFAULT_JWT_SECRET = "dev-secret-key-change-in-production"
+JWT_SECRET = os.getenv("JWT_SECRET", DEFAULT_JWT_SECRET)
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 # 认证模式：mock / jwt
 USER_AUTH_MODE = os.getenv("USER_AUTH_MODE", "mock")
+
+if JWT_SECRET == DEFAULT_JWT_SECRET:
+    log.warning("jwt_secret_default_in_use | env={}", ENVIRONMENT or "unknown")
+    if ENVIRONMENT == "production":
+        raise RuntimeError("JWT_SECRET must be set in production")
 
 
 @dataclass
@@ -48,6 +55,9 @@ def verify_jwt_token(token: str) -> Optional[UserInfo]:
     Returns:
         UserInfo 如果验证成功，否则 None
     """
+    if not JWT_SECRET:
+        log.warning("jwt_verify_failed | reason=missing_jwt_secret")
+        return None
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         

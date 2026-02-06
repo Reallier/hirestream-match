@@ -66,10 +66,7 @@ const runMatch = async () => {
         return;
     }
 
-    if (user.value.totalAvailable <= 0) {
-        matchError.value = '余额不足，请充值后使用';
-        return;
-    }
+
 
     isMatching.value = true;
     matchError.value = '';
@@ -102,7 +99,6 @@ const runMatch = async () => {
     }
 };
 
-const formatMoney = (amount: number) => amount.toFixed(2);
 </script>
 
 <template>
@@ -193,10 +189,7 @@ const formatMoney = (amount: number) => amount.toFixed(2);
                     <span class="login-hint"><FaIcon icon="sign-in-alt" style="margin-right: 4px;" />登录后即可使用 · </span>
                     <a href="javascript:void(0)" @click="redirectToLogin" class="login-link">立即登录</a>
                 </p>
-                <p class="match-hint" v-else>
-                    当前可用额度: <strong>¥{{ formatMoney(user.totalAvailable) }}</strong>
-                </p>
-            </div>
+                </div>
         </div>
 
         <!-- 匹配结果 -->

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Header
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Header, Query
 from deps import get_current_user, verify_admin_api_key
 from match_service.auth import UserInfo
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,8 +14,8 @@ from schemas import (
     CandidateResponse, CandidateDetail, ReindexRequest, ReindexResponse,
     IngestResponse
 )
-from models import Candidate
-from services.matching_service import MatchingService
+from models import Candidate, Resume
+from services.matching_service import MatchingService, EmbeddingUnavailableError
 from services.ingest_service import IngestService
 from services.indexing_service import IndexingService
 from config import settings
@@ -466,6 +466,48 @@ async def instant_match(
                 logger.warning(f"Policy risks detected: {[r['type'] for r in detected_risks]}")
             
             return min(total_penalty, 60), detected_risks  # 最大惩罚 60 分
+
+        def sanitize_output_payload(payload: dict) -> tuple:
+            """清洗 LLM 输出，防止敏感信息或注入响应泄露"""
+            import re
+
+            flags = {"leak": False, "compliance": False}
+
+            leak_patterns = [
+                (r'\b(?:\d{1,3}\.){3}\d{1,3}:\d{1,5}\b', '[敏感信息已过滤]'),
+                (r'\b(?:postgres|postgresql|mysql|mongodb|redis)://[^\s]+', '[敏感信息已过滤]'),
+                (r'\blocalhost(?::\d{1,5})?\b', '[内部地址已过滤]'),
+            ]
+
+            compliance_patterns = [
+                (r'已进入\s*dan\s*模式', '[内容已过滤]'),
+                (r'dan\s*mode\s*(enabled|activated)', '[内容已过滤]'),
+                (r'开发者模式已启用', '[内容已过滤]'),
+                (r'我现在是\s*dan', '[内容已过滤]'),
+                (r'我将作为\s*dan', '[内容已过滤]'),
+            ]
+
+            def sanitize_str(value: str) -> str:
+                for pattern, replacement in compliance_patterns:
+                    if re.search(pattern, value, re.IGNORECASE):
+                        flags["compliance"] = True
+                        value = re.sub(pattern, replacement, value, flags=re.IGNORECASE)
+                for pattern, replacement in leak_patterns:
+                    if re.search(pattern, value, re.IGNORECASE):
+                        flags["leak"] = True
+                        value = re.sub(pattern, replacement, value, flags=re.IGNORECASE)
+                return value
+
+            def walk(obj):
+                if isinstance(obj, dict):
+                    return {key: walk(val) for key, val in obj.items()}
+                if isinstance(obj, list):
+                    return [walk(val) for val in obj]
+                if isinstance(obj, str):
+                    return sanitize_str(obj)
+                return obj
+
+            return walk(payload), flags
         
         # 对 JD 和简历内容进行安全处理
         safe_jd, jd_detections = sanitize_input(jd, "JD")
@@ -574,7 +616,27 @@ async def instant_match(
             return "{}"
         
         json_str = extract_json(content)
-        result = json.loads(json_str)
+        try:
+            result = json.loads(json_str)
+            if not isinstance(result, dict):
+                raise ValueError("LLM JSON is not an object")
+        except Exception as parse_error:
+            logger.warning(f"instant_match | request_id={request_id} | json_parse_failed | error={parse_error}")
+            result = {
+                "match_score": 0,
+                "advantages": [],
+                "risks": ["无法解析模型输出，结果已降级处理"],
+                "advice": "模型输出异常，请稍后重试或检查输入"
+            }
+            result["_parse_failure"] = True
+
+        if not isinstance(result.get("advantages"), list):
+            result["advantages"] = []
+        if not isinstance(result.get("risks"), list):
+            value = result.get("risks")
+            result["risks"] = [] if value in (None, "") else [str(value)]
+        if not isinstance(result.get("match_score"), (int, float)):
+            result["match_score"] = 0
         
         # 记录匹配结果详情
         match_score = result.get("match_score", -1)
@@ -665,22 +727,32 @@ async def instant_match(
                 result["token_usage"].get("total_tokens", 0) + 
                 result["token_usage"]["ocr_tokens"]
             )
+
+        # 输出清洗：防止敏感信息或注入响应泄露
+        result, output_flags = sanitize_output_payload(result)
+        if output_flags.get("compliance"):
+            original_score = result.get("match_score", 0)
+            if isinstance(original_score, (int, float)) and original_score > 50:
+                result["match_score"] = 50
+            if not isinstance(result.get("risks"), list):
+                result["risks"] = []
+            msg = "检测到疑似注入响应内容，已过滤并限制分数"
+            if msg not in str(result.get("risks", [])):
+                result["risks"].insert(0, msg)
+        if output_flags.get("leak"):
+            if not isinstance(result.get("risks"), list):
+                result["risks"] = []
+            msg = "检测到可能的敏感信息，已过滤输出"
+            if msg not in str(result.get("risks", [])):
+                result["risks"].insert(0, msg)
         
-        # ============ 用户扣费逻辑 ============
+        # ============ 免费服务 - 仅记录使用量用于内部统计 ============
         total_cost = result.get("token_usage", {}).get("cost", 0)
         
-        # 如果检测到解析失败，不收费（这是服务质量问题，不应由用户承担）
-        if result.get("_parse_failure"):
-            logger.info(f"instant_match | user_id={user_id} | SKIP_BILLING | reason=parse_failure")
-            result["billing"] = {
-                "charged": False,
-                "reason": "解析失败，本次不收费"
-            }
-        elif user_id and total_cost > 0:
+        # 记录使用量到数据库（便于成本统计，但不扣费）
+        if user_id:
             try:
                 service = get_user_service()
-                
-                # 记录使用量（即使是解析失败也记录，便于统计）
                 service.record_usage(
                     user_id=user_id,
                     request_id=request_id,
@@ -690,36 +762,12 @@ async def instant_match(
                     completion_tokens=result.get("token_usage", {}).get("completion_tokens", 0),
                     cost=total_cost
                 )
-                
-                # 扣除余额
-                deduct_result = service.deduct_balance(
-                    user_id=user_id,
-                    cost=total_cost,
-                    reference_id=request_id,
-                    remark=f"即时匹配分析 (匹配度 {result.get('match_score', 0)}%)"
-                )
-                
-                if deduct_result.success:
-                    logger.info(f"instant_match | user_id={user_id} | cost={total_cost:.4f} | balance_after={deduct_result.balance_after:.4f}")
-                    # 在响应中添加扣费信息
-                    result["billing"] = {
-                        "charged": True,
-                        "cost": total_cost,
-                        "balance_after": deduct_result.balance_after
-                    }
-                else:
-                    logger.warning(f"instant_match | user_id={user_id} | deduct_failed | reason={deduct_result.message}")
-                    result["billing"] = {
-                        "charged": False,
-                        "reason": deduct_result.message
-                    }
-                
                 service.db.close()
+                logger.info(f"instant_match | user_id={user_id} | cost={total_cost:.4f} | FREE_SERVICE")
             except Exception as e:
-                logger.error(f"instant_match | billing_error | user_id={user_id} | error={str(e)}")
-                result["billing"] = {"charged": False, "error": str(e)}
-        else:
-            result["billing"] = {"charged": False, "reason": "未登录或费用为0"}
+                logger.warning(f"instant_match | record_usage_failed | user_id={user_id} | error={str(e)}")
+        
+        result["billing"] = {"charged": False, "reason": "免费服务"}
         
         return result
     
@@ -766,7 +814,8 @@ async def match_candidates(
 async def search_candidates(
     q: str,
     user: UserInfo = Depends(get_current_user),
-    top_k: int = 20,
+    mode: str = Query("hybrid"),
+    top_k: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
     user_id = user.user_id
@@ -776,12 +825,20 @@ async def search_candidates(
     使用关键词进行全文搜索，只搜索当前用户的候选人
     """
     try:
+        if not q or not q.strip():
+            raise HTTPException(status_code=400, detail="搜索关键词不能为空")
+        
+        mode = mode.lower().strip()
+        if mode not in {"hybrid", "vector"}:
+            raise HTTPException(status_code=400, detail="无效搜索模式，仅支持 hybrid/vector")
+
         matching_service = MatchingService(db)
         
         results = matching_service.search_candidates(
             query=q,
             user_id=user_id,
-            top_k=top_k
+            top_k=top_k,
+            mode=mode
         )
         
         return {
@@ -790,6 +847,8 @@ async def search_candidates(
             "query": q
         }
     
+    except EmbeddingUnavailableError:
+        raise HTTPException(status_code=503, detail="Embedding 服务不可用")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"搜索失败: {str(e)}")
 
@@ -975,10 +1034,16 @@ async def list_candidates(
     
     candidates = query.offset(skip).limit(limit).all()
     
-    return [
-        CandidateResponse(
+    # 获取每个候选人的简历 URL
+    result = []
+    for c in candidates:
+        # 查询该候选人的简历
+        resume = db.query(Resume).filter(Resume.candidate_id == c.id).first()
+        resume_url = f"/api/files/{resume.file_uri}" if resume else None
+        
+        result.append(CandidateResponse(
             id=c.id,
-            name=c.name,
+            name=c.name or "未命名",
             email=c.email,
             phone=c.phone,
             location=c.location,
@@ -990,10 +1055,11 @@ async def list_candidates(
             source=c.source,
             status=c.status,
             created_at=c.created_at,
-            updated_at=c.updated_at
-        )
-        for c in candidates
-    ]
+            updated_at=c.updated_at,
+            resume_url=resume_url
+        ))
+    
+    return result
 
 
 # ============= 索引管理 API =============
@@ -1104,6 +1170,54 @@ async def get_stats(user: UserInfo = Depends(get_current_user), db: Session = De
         "total_resumes": total_resumes,
         "active_candidates": active_candidates
     }
+
+
+# ============= 文件下载 API =============
+
+from fastapi.responses import FileResponse
+
+@app.get("/api/files/{file_path:path}")
+async def download_file(
+    file_path: str,
+    user: UserInfo = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    下载文件（带用户权限校验）
+    
+    用户只能下载自己上传的简历文件
+    """
+    user_id = user.user_id
+    
+    # 安全检查：防止路径穿越
+    if ".." in file_path or file_path.startswith("/"):
+        raise HTTPException(status_code=400, detail="无效的文件路径")
+    
+    # 检查文件是否属于当前用户
+    resume = db.query(Resume).filter(Resume.file_uri == file_path).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    
+    candidate = db.query(Candidate).filter(
+        Candidate.id == resume.candidate_id,
+        Candidate.user_id == user_id
+    ).first()
+    
+    if not candidate:
+        raise HTTPException(status_code=403, detail="无权访问此文件")
+    
+    # 构建完整路径
+    full_path = os.path.join("/app", file_path)
+    
+    if not os.path.exists(full_path):
+        raise HTTPException(status_code=404, detail="文件不存在")
+    
+    # 直接在浏览器中打开（不下载）
+    return FileResponse(
+        path=full_path,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "inline"}
+    )
 
 
 if __name__ == "__main__":

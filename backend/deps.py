@@ -8,11 +8,12 @@ FastAPI 依赖注入模块
 from fastapi import Cookie, HTTPException, Depends, Header
 from typing import Optional
 
-from match_service.auth import verify_jwt_token, UserInfo
+from match_service.auth import verify_jwt_token, get_mock_user, USER_AUTH_MODE, UserInfo
 
 
 async def get_current_user(
-    auth_token: Optional[str] = Cookie(None)
+    auth_token: Optional[str] = Cookie(None),
+    x_mock_user: Optional[str] = Header(None, alias="X-Mock-User")
 ) -> UserInfo:
     """
     获取当前登录用户（必须登录）
@@ -25,13 +26,20 @@ async def get_current_user(
         async def list_candidates(user: UserInfo = Depends(get_current_user)):
             user_id = user.user_id
     """
+    if USER_AUTH_MODE == "mock":
+        if auth_token:
+            user_info = verify_jwt_token(auth_token)
+            if user_info:
+                return user_info
+        return get_mock_user(x_mock_user)
+
     if not auth_token:
         raise HTTPException(status_code=401, detail="未登录，请先登录")
-    
+
     user_info = verify_jwt_token(auth_token)
     if not user_info:
         raise HTTPException(status_code=401, detail="登录已过期，请重新登录")
-    
+
     return user_info
 
 

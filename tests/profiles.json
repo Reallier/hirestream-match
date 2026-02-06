@@ -1,0 +1,23 @@
+{
+  "prod_readonly": {
+    "env": "prod",
+    "readonly": true,
+    "parallel": 0,
+    "modules": ["test_01_health.py"]
+  },
+  "prod_sso_smoke": {
+    "env": "prod",
+    "readonly": true,
+    "parallel": 0,
+    "modules": [
+      "test_01_health.py",
+      "test_14_sso_config.py::TestSSOHealthCheck::test_sso_health_quick_check"
+    ]
+  },
+  "full_local": {
+    "env": "local",
+    "readonly": false,
+    "parallel": 4,
+    "modules": []
+  }
+}

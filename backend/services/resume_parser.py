@@ -51,14 +51,50 @@ class ResumeParser:
         # 计算哈希
         text_hash = self._compute_hash(text_content)
         
-        # 解析结构化信息
-        parsed_data = self._parse_structure(text_content)
+        # 使用 LLM 解析结构化信息
+        parsed_data = self._parse_with_llm(text_content)
         
         return {
             'text_content': text_content,
             'text_hash': text_hash,
             'parsed_data': parsed_data
         }
+    
+    def _parse_with_llm(self, text: str) -> Dict:
+        """使用 LLM 解析简历"""
+        from services.llm_service import LLMService
+        from match_service.log import logger
+        
+        try:
+            llm = LLMService()
+            result = llm.parse_resume(text)
+            
+            # 转换为原有格式
+            return {
+                'personal': result.get('personal', {}),
+                'experiences': result.get('experiences', []),
+                'education': result.get('education', []),
+                'skills': result.get('skills', []),
+                'projects': [],
+                'current_title': result.get('current_title'),
+                'current_company': result.get('current_company'),
+                'years_experience': result.get('years_experience'),
+                'education_level': result.get('education_level')
+            }
+        except Exception as e:
+            logger.error(f"LLM 解析简历失败: {str(e)}")
+            # LLM 解析失败，返回空结构
+            return {
+                'personal': {'name': None, 'email': None, 'phone': None, 'location': None},
+                'experiences': [],
+                'education': [],
+                'skills': [],
+                'projects': [],
+                'current_title': None,
+                'current_company': None,
+                'years_experience': None,
+                'education_level': None
+            }
     
     def _extract_text(self, file_path: str) -> str:
         """从文件中提取文本"""
@@ -72,7 +108,23 @@ class ResumeParser:
             raise ValueError(f"不支持的文件格式: {file_ext}")
     
     def _extract_from_pdf(self, file_path: str) -> str:
-        """从 PDF 提取文本"""
+        """从 PDF 提取文本，质量不佳时降级到 OCR"""
+        # 1. 先尝试 pypdf 直接提取
+        text = self._try_pypdf_extract(file_path)
+        
+        # 2. 检查文本质量，不佳则使用 OCR
+        if not self._is_text_quality_ok(text):
+            try:
+                text = self._extract_with_ocr(file_path)
+            except Exception as e:
+                # OCR 失败时回退到 pypdf 结果
+                if not text:
+                    raise ValueError(f"PDF 解析失败: {str(e)}")
+        
+        return text
+    
+    def _try_pypdf_extract(self, file_path: str) -> str:
+        """尝试使用 pypdf 提取文本"""
         text_parts = []
         try:
             with open(file_path, 'rb') as file:
@@ -81,10 +133,46 @@ class ResumeParser:
                     text = page.extract_text()
                     if text:
                         text_parts.append(text)
-        except Exception as e:
-            raise ValueError(f"PDF 解析失败: {str(e)}")
-        
+        except Exception:
+            return ""
         return '\n'.join(text_parts)
+    
+    def _is_text_quality_ok(self, text: str) -> bool:
+        """检查提取的文本质量是否足够"""
+        if not text:
+            return False
+        
+        # 检查长度：简历通常至少有 200 个字符
+        if len(text) < 200:
+            return False
+        
+        # 检查中文或英文字符比例
+        chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+        english_chars = len(re.findall(r'[a-zA-Z]', text))
+        total_chars = len(text)
+        
+        # 有效字符（中英文）应占总字符的 30% 以上
+        valid_ratio = (chinese_chars + english_chars) / total_chars if total_chars > 0 else 0
+        if valid_ratio < 0.3:
+            return False
+        
+        return True
+    
+    def _extract_with_ocr(self, file_path: str) -> str:
+        """使用 Qwen VL OCR 提取文本"""
+        from match_service.qwen_pdf_ocr import QwenPDFOCR
+        from config import settings
+        
+        ocr = QwenPDFOCR(
+            pdf_path=file_path,
+            api_key=settings.dashscope_api_key,
+            model="qwen-vl-ocr-2025-11-20",
+            region="cn",
+            dpi=300,
+            verbose=False
+        )
+        text, token_usage = ocr.run(max_workers=5)
+        return text
     
     def _extract_from_docx(self, file_path: str) -> str:
         """从 DOCX 提取文本"""

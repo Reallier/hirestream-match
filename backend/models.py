@@ -116,6 +116,7 @@ class CandidateIndex(Base):
     __tablename__ = "candidate_index"
     
     candidate_id = Column(Integer, ForeignKey('candidates.id', ondelete='CASCADE'), primary_key=True)
+    search_text = Column(Text)  # 聚合后的检索文本
     lexical_tsv = Column(TSVECTOR)  # PostgreSQL tsvector 全文搜索
     embedding = Column(Vector(1536))  # OpenAI embedding 维度
     filters_json = Column(JSON)  # 过滤字段快照

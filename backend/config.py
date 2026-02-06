@@ -52,6 +52,13 @@ class Settings(BaseSettings):
     topk_lexical: int = 50
     topk_vector: int = 50
     topk_final: int = 20
+
+    # Search Settings (Talent Pool)
+    search_weight_text: float = 0.6
+    search_weight_vector: float = 0.4
+    search_topk_text: int = 50
+    search_topk_vector: int = 50
+    search_trigram_min: float = 0.15
     
     # Deduplication
     dedup_strong_match: str = "exact"

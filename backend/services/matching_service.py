@@ -9,6 +9,10 @@ from match_service.log import logger
 import math
 
 
+class EmbeddingUnavailableError(Exception):
+    """Embedding 生成失败"""
+
+
 class MatchingService:
     """匹配服务：JD 匹配候选人"""
     
@@ -26,6 +30,13 @@ class MatchingService:
         self.topk_lexical = settings.topk_lexical
         self.topk_vector = settings.topk_vector
         self.topk_final = settings.topk_final
+
+        # 搜索配置（人才库搜索）
+        self.search_weight_text = settings.search_weight_text
+        self.search_weight_vector = settings.search_weight_vector
+        self.search_topk_text = settings.search_topk_text
+        self.search_topk_vector = settings.search_topk_vector
+        self.search_trigram_min = settings.search_trigram_min
     
     def match_candidates(
         self,
@@ -418,60 +429,183 @@ class MatchingService:
         query: str,
         user_id: int,
         filters: Optional[Dict[str, Any]] = None,
-        top_k: int = 20
+        top_k: int = 20,
+        mode: str = "hybrid"
     ) -> List[Dict[str, Any]]:
         """
-        关键词搜索候选人（按用户隔离）
+        关键词 + 语义混合搜索候选人（按用户隔离）
         
         Args:
             query: 搜索关键词
             user_id: 用户 ID（用于数据隔离）
             filters: 过滤条件
             top_k: 返回数量
+            mode: 搜索模式（hybrid/vector）
         
         Returns:
             候选人列表
         """
         try:
-            # 使用全文搜索 - 添加 user_id 过滤
-            sql = text("""
+            if not query or not query.strip():
+                return []
+
+            query = query.strip()
+
+            # 必须接大模型：生成查询 embedding，失败则直接报错
+            query_embedding = self.llm_service.generate_embedding(query)
+            if not query_embedding:
+                raise EmbeddingUnavailableError("embedding_unavailable")
+
+            text_candidates: Dict[int, Dict[str, Any]] = {}
+
+            if mode != "vector":
+                # 文本 + 模糊召回
+                text_sql = text("""
+                    SELECT 
+                        c.id,
+                        c.name,
+                        c.current_title,
+                        c.current_company,
+                        c.skills,
+                        c.created_at,
+                        r.file_uri,
+                        ts_rank_cd(ci.lexical_tsv, websearch_to_tsquery('simple', :query)) AS lexical_score,
+                        similarity(COALESCE(ci.search_text, ''), :query) AS trigram_score,
+                        ts_headline('simple', COALESCE(ci.search_text, ''), websearch_to_tsquery('simple', :query),
+                                    'StartSel=<mark>, StopSel=</mark>, MaxWords=20, MinWords=5, ShortWord=3') AS snippet
+                    FROM candidates c
+                    JOIN candidate_index ci ON c.id = ci.candidate_id
+                    LEFT JOIN LATERAL (
+                        SELECT file_uri
+                        FROM resumes r
+                        WHERE r.candidate_id = c.id
+                        ORDER BY r.created_at DESC
+                        LIMIT 1
+                    ) r ON TRUE
+                    WHERE c.status = 'active'
+                        AND c.user_id = :user_id
+                        AND (
+                            ci.lexical_tsv @@ websearch_to_tsquery('simple', :query)
+                            OR ci.search_text % :query
+                            OR similarity(COALESCE(ci.search_text, ''), :query) >= :min_sim
+                        )
+                    ORDER BY GREATEST(
+                        ts_rank_cd(ci.lexical_tsv, websearch_to_tsquery('simple', :query)),
+                        similarity(COALESCE(ci.search_text, ''), :query)
+                    ) DESC
+                    LIMIT :limit
+                """)
+
+                text_result = self.db.execute(
+                    text_sql,
+                    {
+                        'query': query,
+                        'user_id': user_id,
+                        'min_sim': self.search_trigram_min,
+                        'limit': max(top_k, self.search_topk_text)
+                    }
+                )
+
+                for row in text_result:
+                    candidate_id = row[0]
+                    lexical_score = float(row[7]) if row[7] else 0.0
+                    trigram_score = float(row[8]) if row[8] else 0.0
+                    text_score = max(lexical_score, trigram_score)
+                    resume_url = f"/api/files/{row[6]}" if row[6] else None
+
+                    text_candidates[candidate_id] = {
+                        'candidate_id': candidate_id,
+                        'name': row[1],
+                        'current_title': row[2],
+                        'current_company': row[3],
+                        'skills': row[4] or [],
+                        'created_at': row[5],
+                        'resume_url': resume_url,
+                        'snippet': row[9] if row[9] else '',
+                        'text_score': text_score,
+                        'vector_score': 0.0
+                    }
+
+            # 向量召回（必须）
+            vector_sql = text("""
                 SELECT 
                     c.id,
                     c.name,
                     c.current_title,
                     c.current_company,
                     c.skills,
-                    ts_rank(ci.lexical_tsv, plainto_tsquery('simple', :query)) as score,
-                    ts_headline('simple', c.current_title || ' ' || c.current_company, 
-                                plainto_tsquery('simple', :query)) as snippet
+                    c.created_at,
+                    r.file_uri,
+                    1 - (ci.embedding <=> :query_embedding::vector) AS vector_score
                 FROM candidates c
                 JOIN candidate_index ci ON c.id = ci.candidate_id
-                WHERE ci.lexical_tsv @@ plainto_tsquery('simple', :query)
-                    AND c.status = 'active'
+                LEFT JOIN LATERAL (
+                    SELECT file_uri
+                    FROM resumes r
+                    WHERE r.candidate_id = c.id
+                    ORDER BY r.created_at DESC
+                    LIMIT 1
+                ) r ON TRUE
+                WHERE c.status = 'active'
                     AND c.user_id = :user_id
-                ORDER BY score DESC
+                ORDER BY ci.embedding <=> :query_embedding::vector
                 LIMIT :limit
             """)
-            
-            result = self.db.execute(
-                sql,
-                {'query': query, 'user_id': user_id, 'limit': top_k}
+
+            vector_result = self.db.execute(
+                vector_sql,
+                {
+                    'query_embedding': str(query_embedding),
+                    'user_id': user_id,
+                    'limit': max(top_k, self.search_topk_vector)
+                }
             )
-            
-            candidates = []
-            for row in result:
-                candidates.append({
-                    'candidate_id': row[0],
-                    'name': row[1],
-                    'current_title': row[2],
-                    'current_company': row[3],
-                    'skills': row[4] or [],
-                    'score': float(row[5]) if row[5] else 0.0,
-                    'snippet': row[6] if row[6] else ''
+
+            for row in vector_result:
+                candidate_id = row[0]
+                vector_score = float(row[7]) if row[7] else 0.0
+                resume_url = f"/api/files/{row[6]}" if row[6] else None
+
+                if candidate_id in text_candidates:
+                    text_candidates[candidate_id]['vector_score'] = vector_score
+                else:
+                    text_candidates[candidate_id] = {
+                        'candidate_id': candidate_id,
+                        'name': row[1],
+                        'current_title': row[2],
+                        'current_company': row[3],
+                        'skills': row[4] or [],
+                        'created_at': row[5],
+                        'resume_url': resume_url,
+                        'snippet': '',
+                        'text_score': 0.0,
+                        'vector_score': vector_score
+                    }
+
+            # 融合排序
+            ranked = []
+            for candidate in text_candidates.values():
+                final_score = (
+                    self.search_weight_text * candidate.get('text_score', 0.0) +
+                    self.search_weight_vector * candidate.get('vector_score', 0.0)
+                )
+                ranked.append({
+                    'candidate_id': candidate['candidate_id'],
+                    'name': candidate['name'],
+                    'current_title': candidate['current_title'],
+                    'current_company': candidate['current_company'],
+                    'skills': candidate['skills'],
+                    'created_at': candidate['created_at'],
+                    'resume_url': candidate['resume_url'],
+                    'score': final_score,
+                    'snippet': candidate['snippet']
                 })
-            
-            return candidates
-        
+
+            ranked.sort(key=lambda x: x['score'], reverse=True)
+            return ranked[:top_k]
+
+        except EmbeddingUnavailableError:
+            raise
         except Exception as e:
             logger.error(f"搜索失败: {str(e)}")
             return []

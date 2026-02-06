@@ -39,6 +39,7 @@ class CandidateResponse(CandidateBase):
     status: str
     created_at: datetime
     updated_at: datetime
+    resume_url: Optional[str] = None  # 简历文件 URL
     
     class Config:
         from_attributes = True
@@ -180,6 +181,7 @@ class MatchResponse(BaseModel):
 class SearchRequest(BaseModel):
     """搜索请求"""
     q: str = Field(description="搜索关键词")
+    mode: str = Field(default="hybrid", description="搜索模式: hybrid/vector")
     filters: Optional[Dict[str, Any]] = None
     top_k: int = Field(default=20, ge=1, le=100)
 
@@ -191,6 +193,8 @@ class SearchResult(BaseModel):
     current_title: Optional[str]
     current_company: Optional[str]
     skills: List[str]
+    created_at: Optional[datetime] = None
+    resume_url: Optional[str] = None
     score: float
     snippet: Optional[str] = Field(None, description="匹配片段")
 

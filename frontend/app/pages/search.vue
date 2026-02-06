@@ -6,9 +6,8 @@
  */
 definePageMeta({ layout: 'default' });
 
-const config = useRuntimeConfig();
-const apiBase = config.public.apiBase;
 const { user, redirectToLogin } = useAuth();
+const { searchCandidates } = useCandidates();
 
 const query = ref('');
 const results = ref<any[]>([]);
@@ -24,10 +23,7 @@ const performSearch = async () => {
     results.value = [];
 
     try {
-        const response = await $fetch<any>(`${apiBase}/api/search?q=${encodeURIComponent(query.value)}&user_id=${user.value.id}&top_k=20`, {
-            credentials: 'include'
-        });
-        results.value = response.results || [];
+        results.value = await searchCandidates(query.value, 20);
     } catch {
         // 搜索失败，静默处理
     } finally {

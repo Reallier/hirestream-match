@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 # TalentAI 统一部署脚本
 # 用法: ./deploy.sh [backend|frontend|all] [staging|prod]
 
