@@ -295,7 +295,16 @@ class IngestService:
             today = date.today()
             if isinstance(earliest_date, str):
                 from datetime import datetime
-                earliest_date = datetime.strptime(earliest_date, '%Y-%m-%d').date()
+                # 支持多种日期格式
+                for fmt in ['%Y-%m-%d', '%Y-%m', '%Y']:
+                    try:
+                        earliest_date = datetime.strptime(earliest_date, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    # 无法解析，跳过
+                    return None
             
             years = (today - earliest_date).days / 365.25
             return int(years)
