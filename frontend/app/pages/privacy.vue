@@ -101,7 +101,7 @@ useHead({
             <p>如有隐私相关问题，请通过以下方式联系：</p>
             <ul>
                 <li>应用内反馈功能</li>
-                <li>官网：<a href="https://intjtech.reallier.top:5443" target="_blank">intjtech.reallier.top</a></li>
+                <li>官网：<a href="https://www.intjsys.com" target="_blank">www.intjsys.com</a></li>
             </ul>
         </section>
     </div>
