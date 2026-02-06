@@ -906,6 +906,7 @@ async def ingest_resume(
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"入库失败: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"入库失败: {str(e)}")
     
     finally:
