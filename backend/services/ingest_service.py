@@ -71,8 +71,12 @@ class IngestService:
                 candidate_id = existing_candidate.id
                 is_new = False
                 
-                # 检查 text_hash 是否已存在（避免唯一约束冲突）
-                existing_resume = self.db.query(Resume).filter(Resume.text_hash == text_hash).first()
+                # 去重（同一候选人重复上传相同内容的简历时直接跳过）
+                # 注意：text_hash 已移除全局 UNIQUE，仅在业务层做用户/候选人级别去重
+                existing_resume = self.db.query(Resume).filter(
+                    Resume.text_hash == text_hash,
+                    Resume.candidate_id == candidate_id
+                ).first()
                 if existing_resume:
                     # 简历内容完全相同，跳过
                     return {
@@ -81,6 +85,7 @@ class IngestService:
                         'resume_id': existing_resume.id,
                         'is_new': False,
                         'merged_with': candidate_id,
+                        'index_required': False,
                         'message': f'简历内容与已有记录相同，已跳过 (候选人 ID: {candidate_id})'
                     }
                 
@@ -202,27 +207,13 @@ class IngestService:
             # 6. 提交事务
             self.db.commit()
             
-            # 7. 后台异步建立索引（避免阻塞请求）
-            import threading
-            
-            def delayed_index():
-                import time
-                time.sleep(settings.index_delay_seconds)
-                try:
-                    self.indexing_service.index_candidate(candidate_id, force=True)
-                except Exception as e:
-                    # 索引失败不影响主流程，仅记录日志
-                    logger.error(f"后台索引失败 (candidate_id={candidate_id}): {e}")
-            
-            # 在后台线程执行，不阻塞当前请求
-            threading.Thread(target=delayed_index, daemon=True).start()
-            
             return {
                 'success': True,
                 'candidate_id': candidate_id,
                 'resume_id': resume.id,
                 'is_new': is_new,
                 'merged_with': existing_candidate.id if existing_candidate else None,
+                'index_required': True,
                 'message': message
             }
         
@@ -235,6 +226,7 @@ class IngestService:
                 'resume_id': 0,
                 'is_new': False,
                 'merged_with': None,
+                'index_required': False,
                 'message': f'入库失败: {str(e)}'
             }
     

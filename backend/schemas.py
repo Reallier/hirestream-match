@@ -162,7 +162,7 @@ class CandidateMatch(BaseModel):
     years_experience: Optional[int]
     score: float = Field(description="综合匹配分数")
     score_breakdown: Dict[str, float] = Field(description="分数分解")
-    evidence: List[Evidence] = Field(description="匹配证据")
+    evidence: List[Evidence] = Field(default_factory=list, description="匹配证据")
     gaps: List[str] = Field(default_factory=list, description="缺口清单")
     matched_skills: List[str] = Field(description="匹配的技能")
     missing_skills: List[str] = Field(description="缺失的技能")

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Header, Query
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Form, Header, Query, BackgroundTasks
 from deps import get_current_user, verify_admin_api_key
 from match_service.auth import UserInfo
 from fastapi.middleware.cors import CORSMiddleware
@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import tempfile
 import os
 
-from database import get_db, get_auth_db, init_db
+from database import get_db, get_auth_db, init_db, SessionLocal
 from schemas import (
     MatchRequest, MatchResponse, SearchRequest, SearchResponse,
     CandidateResponse, CandidateDetail, ReindexRequest, ReindexResponse,
@@ -857,6 +857,7 @@ async def search_candidates(
 
 @app.post("/api/candidates/ingest", response_model=IngestResponse)
 async def ingest_resume(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     source: str = Form("upload"),
     user: UserInfo = Depends(get_current_user),
@@ -900,6 +901,30 @@ async def ingest_resume(
             source=source,
             user_id=user_id
         )
+
+        # 后台建立索引（不阻塞入库接口），必须使用独立 Session，避免跨线程复用请求 Session
+        index_required = result.get("index_required", True)
+        candidate_id = result.get("candidate_id")
+        if index_required and candidate_id:
+            def index_candidate_task(cid: int):
+                import time
+                task_db = SessionLocal()
+                try:
+                    time.sleep(settings.index_delay_seconds)
+                    ok = IndexingService(task_db).index_candidate(cid, force=True)
+                    if not ok:
+                        logger.warning(f"后台索引失败 | candidate_id={cid}")
+                except Exception as e:
+                    logger.error(f"后台索引异常 | candidate_id={cid} | error={e}", exc_info=True)
+                finally:
+                    task_db.close()
+
+            # FastAPI 会在响应返回后执行任务
+            if background_tasks is not None:
+                background_tasks.add_task(index_candidate_task, int(candidate_id))
+
+        # 避免把内部字段透传给客户端（同时确保 response_model 校验稳定）
+        result.pop("index_required", None)
         
         return result
     

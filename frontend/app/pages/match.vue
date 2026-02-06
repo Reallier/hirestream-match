@@ -17,6 +17,14 @@ const matchResults = ref<any[]>([]);
 const errorMessage = ref('');
 const candidateCount = ref(0);
 
+// 后端 score 可能是 0-1 的综合分，也可能未来调整为 0-100，这里做兼容显示
+const formatScore = (score: any): number => {
+    const num = typeof score === 'number' ? score : Number(score);
+    if (!Number.isFinite(num)) return 0;
+    if (num <= 1) return Math.round(num * 100);
+    return Math.round(num);
+};
+
 // 获取候选人数量
 const fetchCandidateCount = async () => {
     if (!user.value) return;
@@ -65,19 +73,21 @@ const runMatch = async () => {
     try {
         const config = useRuntimeConfig();
         const apiBase = config.public.apiBase;
-        const response = await $fetch<any>(`${apiBase}/api/jd-match`, {
+        const response = await $fetch<any>(`${apiBase}/api/match`, {
             method: 'POST',
             credentials: 'include',
             body: {
                 jd: jdText.value,
-                top_k: topK.value
+                top_k: topK.value,
+                // 页面目前不展示证据/片段，避免为 TopK 候选人额外触发 LLM 调用
+                explain: false
             }
         });
 
-        matchResults.value = response.results || [];
+        matchResults.value = response.matches || response.results || [];
         await refreshUser();
     } catch (error: any) {
-        errorMessage.value = error.data?.message || '匹配失败，请重试';
+        errorMessage.value = error.data?.detail || error.data?.message || '匹配失败，请重试';
     } finally {
         isMatching.value = false;
     }
@@ -162,14 +172,14 @@ const runMatch = async () => {
                     <div 
                         class="candidate-card"
                         v-for="(candidate, i) in matchResults" 
-                        :key="candidate.id"
+                        :key="candidate.candidate_id ?? candidate.id ?? i"
                     >
                         <div class="candidate-rank">{{ i + 1 }}</div>
                         <div class="candidate-info">
                             <div class="candidate-header">
                                 <h4>{{ candidate.name || '未知姓名' }}</h4>
                                 <div class="candidate-score">
-                                    <span class="score-value">{{ candidate.match_score }}</span>
+                                    <span class="score-value">{{ formatScore(candidate.score ?? candidate.match_score) }}</span>
                                     <span class="score-label">匹配度</span>
                                 </div>
                             </div>
@@ -178,13 +188,14 @@ const runMatch = async () => {
                                 <span v-if="candidate.current_company">@ {{ candidate.current_company }}</span>
                                 <span v-if="candidate.years_experience">· {{ candidate.years_experience }}年经验</span>
                             </div>
-                            <div class="candidate-skills" v-if="candidate.skills?.length">
-                                <span class="skill-tag" v-for="skill in candidate.skills.slice(0, 5)" :key="skill">
+                            <div class="candidate-skills" v-if="candidate.matched_skills?.length">
+                                <span class="skill-tag" v-for="skill in candidate.matched_skills.slice(0, 8)" :key="skill">
                                     {{ skill }}
                                 </span>
                             </div>
-                            <div class="candidate-highlights" v-if="candidate.highlights">
-                                <p>{{ candidate.highlights }}</p>
+                            <div class="candidate-gaps" v-if="candidate.missing_skills?.length">
+                                <span class="gap-label">缺口：</span>
+                                <span class="gap-text">{{ candidate.missing_skills.slice(0, 8).join('、') }}<span v-if="candidate.missing_skills.length > 8">…</span></span>
                             </div>
                         </div>
                     </div>
@@ -398,5 +409,17 @@ const runMatch = async () => {
     padding: 12px;
     background: var(--color-bg);
     border-radius: var(--radius-md);
+}
+
+.candidate-gaps {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    padding: 10px 12px;
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+}
+
+.gap-label {
+    color: var(--color-text-muted);
 }
 </style>
